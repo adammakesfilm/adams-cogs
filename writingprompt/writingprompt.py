@@ -55,9 +55,12 @@ class WritingPrompt(commands.Cog):
             "The rain today is warm and smells like honey. People are starting to change.",
         ]
 
+    def cog_load(self):
+        """Called when the cog is loaded. Start the loop."""
         self.daily_prompt.start()
 
     def cog_unload(self):
+        """Called when the cog is unloaded. Stop the loop."""
         self.daily_prompt.cancel()
 
     # --- Core Logic ---
@@ -101,7 +104,7 @@ class WritingPrompt(commands.Cog):
         return random.choice(self.default_prompts)
 
     async def get_llm_feedback(self, prompt: str, writing: str) -> Optional[str]:
-        """Send writing to OpenRouter's Gemma 4 31B and get feedback."""
+        """Send writing to OpenRouter's GPT-OSS-120B and get feedback."""
         api_key = await self.config.openrouter_api_key()
         if not api_key:
             return None
@@ -110,8 +113,9 @@ class WritingPrompt(commands.Cog):
             "You are a constructive writing feedback assistant. "
             "A writer was given a writing prompt and wrote a response. "
             "Provide thoughtful, encouraging feedback on their writing. "
-            "Comment on strengths, areas for improvement, style, and creativity. "
+            "Comment on strengths and areas for improvement, provide examples of how fixes could be implemented "
             "Be specific and kind. Keep your response concise (under 500 words)."
+            "Your response should be formatted best for Discord"
         )
 
         user_msg = (
@@ -295,19 +299,34 @@ class WritingPrompt(commands.Cog):
             else:
                 prompt_text = "(No prompt context available)"
 
-        # Let the user know we're processing
+        # Create a thread and start processing
         try:
-            processing_msg = await message.reply("🔍 Getting feedback on your writing...")
-        except discord.Forbidden:
-            # Can't even reply, bail out
+            # Create a new thread
+            thread = await message.create_thread(
+                name="✍️ AI Feedback",
+                auto_archive_duration=1440  # 24 hours
+            )
+            # Send processing status inside the thread
+            processing_msg = await thread.send("🔍 Getting feedback on your writing...")
+        except (discord.Forbidden, discord.HTTPException) as e:
+            # If we can't create a thread, fallback to error handling
+            print(f"[WritingPrompt] Error creating thread: {e}")
             self.processed_messages.discard(payload.message_id)
+            self.user_cooldowns.pop(payload.user_id, None)
+            try:
+                await message.reply(
+                    "❌ I failed to create a feedback thread. "
+                    "Please ensure I have permission to Create Public Threads."
+                )
+            except discord.Forbidden:
+                pass
             return
 
         # Get LLM feedback
         feedback = await self.get_llm_feedback(prompt_text, message.content)
 
         if feedback:
-            # Truncate if necessary to fit in an embed description (4096 char limit)
+            # Truncate if necessary
             truncated = False
             if len(feedback) > 4000:
                 feedback = feedback[:4000] + "..."
@@ -324,9 +343,10 @@ class WritingPrompt(commands.Cog):
             embed.set_footer(text=footer)
 
             try:
+                # Edit the processing message inside the thread with the result
                 await processing_msg.edit(content=None, embed=embed)
             except discord.HTTPException:
-                # Fallback to plain text if embed fails
+                # Fallback to plain text if embed fails inside thread
                 await processing_msg.edit(
                     content=f"📝 **Writing Feedback:**\n{feedback[:1900]}"
                 )
@@ -335,6 +355,7 @@ class WritingPrompt(commands.Cog):
             self.processed_messages.discard(payload.message_id)
             self.user_cooldowns.pop(payload.user_id, None)
             try:
+                # Edit the processing message inside the thread with the error
                 await processing_msg.edit(
                     content="❌ Could not get feedback from the LLM. "
                     "The API may be down or rate-limited. Try again later."
@@ -500,4 +521,4 @@ class WritingPrompt(commands.Cog):
         embed.add_field(name="Reddit Fetch", value=reddit_text, inline=True)
         embed.add_field(name="Custom Prompts", value=str(custom_count), inline=True)
         embed.add_field(name="LLM API Key", value=api_text, inline=True)
-        await ctx.send(embed=embed)
+        await ctx.send(embed)
