@@ -55,9 +55,12 @@ class WritingPrompt(commands.Cog):
             "The rain today is warm and smells like honey. People are starting to change.",
         ]
 
+    def cog_load(self):
+        """Called when the cog is loaded. Start the loop."""
         self.daily_prompt.start()
 
     def cog_unload(self):
+        """Called when the cog is unloaded. Stop the loop."""
         self.daily_prompt.cancel()
 
     # --- Core Logic ---
@@ -100,75 +103,74 @@ class WritingPrompt(commands.Cog):
             return random.choice(custom)
         return random.choice(self.default_prompts)
 
-async def get_llm_feedback(self, prompt: str, writing: str) -> Optional[str]:
-    """Send writing to OpenRouter's Gemma 4 31B and get feedback."""
-    api_key = await self.config.openrouter_api_key()
-    if not api_key:
-        print("[WritingPrompt] ERROR: No API key configured!")
-        return None
+    async def get_llm_feedback(self, prompt: str, writing: str) -> Optional[str]:
+        """Send writing to OpenRouter's Gemma 4 31B and get feedback."""
+        api_key = await self.config.openrouter_api_key()
+        if not api_key:
+            print("[WritingPrompt] ERROR: No API key configured!")
+            return None
 
-    system_msg = (
-        "You are a constructive writing feedback assistant. "
-        "A writer was given a writing prompt and wrote a response. "
-        "Provide thoughtful, encouraging feedback on their writing. "
-        "Comment on strengths, areas for improvement, style, and creativity. "
-        "Be specific and kind. Keep your response concise (under 500 words)."
-    )
+        system_msg = (
+            "You are a constructive writing feedback assistant. "
+            "A writer was given a writing prompt and wrote a response. "
+            "Provide thoughtful, encouraging feedback on their writing. "
+            "Comment on strengths, areas for improvement, style, and creativity. "
+            "Be specific and kind. Keep your response concise (under 500 words)."
+        )
 
-    user_msg = (
-        f"**Writing Prompt:** {prompt}\n\n"
-        f"**Writer's Response:**\n{writing}\n\n"
-        f"Please provide constructive feedback on this writing."
-    )
+        user_msg = (
+            f"**Writing Prompt:** {prompt}\n\n"
+            f"**Writer's Response:**\n{writing}\n\n"
+            f"Please provide constructive feedback on this writing."
+        )
 
-    payload = {
-        "model": "google/gemma-4-31b-it:free",
-        "messages": [
-            {"role": "system", "content": system_msg},
-            {"role": "user", "content": user_msg},
-        ],
-        "max_tokens": 1024,
-    }
+        payload = {
+            "model": "google/gemma-4-31b-it:free",
+            "messages": [
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": user_msg},
+            ],
+            "max_tokens": 1024,
+        }
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/red-discord-bot",
-        "X-Title": "WritingPrompt Cog",
-    }
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/red-discord-bot",
+            "X-Title": "WritingPrompt Cog",
+        }
 
-    print("[WritingPrompt] Sending request to OpenRouter...")
+        print("[WritingPrompt] Sending request to OpenRouter...")
 
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                json=payload,
-                headers=headers,
-                timeout=aiohttp.ClientTimeout(total=60),
-            ) as resp:
-                print(f"[WritingPrompt] Response status: {resp.status}")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    json=payload,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=60),
+                ) as resp:
+                    print(f"[WritingPrompt] Response status: {resp.status}")
 
-                if resp.status != 200:
-                    error_text = await resp.text()
-                    print(f"[WritingPrompt] ERROR Response body: {error_text}")
-                    return None
+                    if resp.status != 200:
+                        error_text = await resp.text()
+                        print(f"[WritingPrompt] ERROR Response body: {error_text}")
+                        return None
 
-                data = await resp.json()
-                print(f"[WritingPrompt] Success! Response keys: {data.keys()}")
+                    data = await resp.json()
+                    print(f"[WritingPrompt] Success! Response keys: {data.keys()}")
 
-                if "choices" in data and len(data["choices"]) > 0:
-                    return data["choices"][0]["message"]["content"]
-                else:
-                    print(f"[WritingPrompt] ERROR: No 'choices' in response: {data}")
-                    return None
-    except aiohttp.ClientError as e:
-        print(f"[WritingPrompt] Network error: {type(e).__name__}: {e}")
-        return None
-    except Exception as e:
-        print(f"[WritingPrompt] Unexpected error: {type(e).__name__}: {e}")
-        return None
-
+                    if "choices" in data and len(data["choices"]) > 0:
+                        return data["choices"][0]["message"]["content"]
+                    else:
+                        print(f"[WritingPrompt] ERROR: No 'choices' in response: {data}")
+                        return None
+        except aiohttp.ClientError as e:
+            print(f"[WritingPrompt] Network error: {type(e).__name__}: {e}")
+            return None
+        except Exception as e:
+            print(f"[WritingPrompt] Unexpected error: {type(e).__name__}: {e}")
+            return None
 
     # --- Daily Task ---
 
@@ -493,13 +495,12 @@ async def get_llm_feedback(self, prompt: str, writing: str) -> Optional[str]:
 
         try:
             msg = await channel.send(embed=embed)
-            async with self.config.guild(ctx.guild).prompt_messages() as pms:
+            async with self.config.guild(guild).prompt_messages() as pms:
                 pms[str(msg.id)] = prompt
                 if len(pms) > 7:
                     oldest = sorted(pms.keys(), key=int)[:-7]
                     for k in oldest:
                         del pms[k]
-            await ctx.send(f"✅ Prompt posted to {channel.mention}!")
         except discord.Forbidden:
             await ctx.send("❌ I don't have permission to send messages in that channel.")
 
@@ -519,4 +520,4 @@ async def get_llm_feedback(self, prompt: str, writing: str) -> Optional[str]:
         embed.add_field(name="Reddit Fetch", value=reddit_text, inline=True)
         embed.add_field(name="Custom Prompts", value=str(custom_count), inline=True)
         embed.add_field(name="LLM API Key", value=api_text, inline=True)
-        await ctx.send(embed=embed)
+        await ctx.send(embed)
