@@ -55,12 +55,9 @@ class WritingPrompt(commands.Cog):
             "The rain today is warm and smells like honey. People are starting to change.",
         ]
 
-    def cog_load(self):
-        """Called when the cog is loaded. Start the loop."""
         self.daily_prompt.start()
 
     def cog_unload(self):
-        """Called when the cog is unloaded. Stop the loop."""
         self.daily_prompt.cancel()
 
     # --- Core Logic ---
@@ -107,7 +104,6 @@ class WritingPrompt(commands.Cog):
         """Send writing to OpenRouter's Gemma 4 31B and get feedback."""
         api_key = await self.config.openrouter_api_key()
         if not api_key:
-            print("[WritingPrompt] ERROR: No API key configured!")
             return None
 
         system_msg = (
@@ -140,8 +136,6 @@ class WritingPrompt(commands.Cog):
             "X-Title": "WritingPrompt Cog",
         }
 
-        print("[WritingPrompt] Sending request to OpenRouter...")
-
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
@@ -150,26 +144,11 @@ class WritingPrompt(commands.Cog):
                     headers=headers,
                     timeout=aiohttp.ClientTimeout(total=60),
                 ) as resp:
-                    print(f"[WritingPrompt] Response status: {resp.status}")
-
                     if resp.status != 200:
-                        error_text = await resp.text()
-                        print(f"[WritingPrompt] ERROR Response body: {error_text}")
                         return None
-
                     data = await resp.json()
-                    print(f"[WritingPrompt] Success! Response keys: {data.keys()}")
-
-                    if "choices" in data and len(data["choices"]) > 0:
-                        return data["choices"][0]["message"]["content"]
-                    else:
-                        print(f"[WritingPrompt] ERROR: No 'choices' in response: {data}")
-                        return None
-        except aiohttp.ClientError as e:
-            print(f"[WritingPrompt] Network error: {type(e).__name__}: {e}")
-            return None
-        except Exception as e:
-            print(f"[WritingPrompt] Unexpected error: {type(e).__name__}: {e}")
+                    return data["choices"][0]["message"]["content"]
+        except Exception:
             return None
 
     # --- Daily Task ---
@@ -495,12 +474,13 @@ class WritingPrompt(commands.Cog):
 
         try:
             msg = await channel.send(embed=embed)
-            async with self.config.guild(guild).prompt_messages() as pms:
+            async with self.config.guild(ctx.guild).prompt_messages() as pms:
                 pms[str(msg.id)] = prompt
                 if len(pms) > 7:
                     oldest = sorted(pms.keys(), key=int)[:-7]
                     for k in oldest:
                         del pms[k]
+            await ctx.send(f"✅ Prompt posted to {channel.mention}!")
         except discord.Forbidden:
             await ctx.send("❌ I don't have permission to send messages in that channel.")
 
@@ -520,4 +500,4 @@ class WritingPrompt(commands.Cog):
         embed.add_field(name="Reddit Fetch", value=reddit_text, inline=True)
         embed.add_field(name="Custom Prompts", value=str(custom_count), inline=True)
         embed.add_field(name="LLM API Key", value=api_text, inline=True)
-        await ctx.send(embed)
+        await ctx.send(embed=embed)
