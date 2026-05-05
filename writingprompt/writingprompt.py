@@ -3,7 +3,7 @@ import random
 import time as time_module
 import discord
 from discord.ext import tasks
-from datetime import time, timezone
+from datetime import time, timezone, datetime
 from typing import Optional, Literal
 from redbot.core import commands, Config
 from redbot.core.bot import Red
@@ -22,7 +22,7 @@ class WritingPrompt(commands.Cog):
             channel=None,
             use_reddit=True,
             custom_prompts=[],
-            prompt_messages={},  # {message_id: prompt_text}
+            prompt_messages={},  # {message_id: (prompt_text, post_timestamp)}
         )
         self.config.register_global(
             openrouter_api_key=None,
@@ -104,56 +104,57 @@ class WritingPrompt(commands.Cog):
         return random.choice(self.default_prompts)
 
     async def get_llm_feedback(self, prompt: str, writing: str) -> Optional[str]:
-        """Send writing to OpenRouter's GPT-OSS-120B and get feedback."""
-        api_key = await self.config.openrouter_api_key()
-        if not api_key:
-            return None
+    """Send writing to OpenRouter's GPT-OSS-120B and get feedback."""
+    api_key = await self.config.openrouter_api_key()
+    if not api_key:
+        return None
 
-        system_msg = (
-            "You are a constructive writing feedback assistant. "
-            "A writer was given a writing prompt and wrote a response. "
-            "Provide thoughtful, encouraging feedback on their writing. "
-            "Comment on strengths and areas for improvement, provide examples of how fixes could be implemented "
-            "Be specific and kind. Keep your response concise (under 500 words)."
-            "Your response should be formatted best for Discord"
-        )
+    system_msg = (
+        "You are a constructive writing feedback assistant. "
+        "A writer was given a writing prompt and wrote a response. "
+        "Provide thoughtful, encouraging feedback on their writing. "
+        "Comment on strengths and areas for improvement, provide examples of how fixes could be implemented. "
+        "Be specific and kind. Keep your response concise (under 500 words).\n\n"
+        "Format your response for Discord: use bullet points or numbered lists for clarity, and use **bold text** for emphasis. "
+        "Do NOT use markdown tables, headers, or code blocks, as they do not render well."
+    )
 
-        user_msg = (
-            f"**Writing Prompt:** {prompt}\n\n"
-            f"**Writer's Response:**\n{writing}\n\n"
-            f"Please provide constructive feedback on this writing."
-        )
+    user_msg = (
+        f"**Writing Prompt:** {prompt}\n\n"
+        f"**Writer's Response:**\n{writing}\n\n"
+        f"Please provide constructive feedback on this writing."
+    )
 
-        payload = {
-            "model": "openai/gpt-oss-120b:free",
-            "messages": [
-                {"role": "system", "content": system_msg},
-                {"role": "user", "content": user_msg},
-            ],
-            "max_tokens": 1024,
-        }
+    payload = {
+        "model": "openai/gpt-oss-120b:free",
+        "messages": [
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": user_msg},
+        ],
+        "max_tokens": 1024,
+    }
 
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com/red-discord-bot",
-            "X-Title": "WritingPrompt Cog",
-        }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://github.com/red-discord-bot",
+        "X-Title": "WritingPrompt Cog",
+    }
 
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    json=payload,
-                    headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=60),
-                ) as resp:
-                    if resp.status != 200:
-                        return None
-                    data = await resp.json()
-                    return data["choices"][0]["message"]["content"]
-        except Exception:
-            return None
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                json=payload,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=60),
+            ) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.json()
+                return data["choices"][0]["message"]["content"]
+    except Exception:
+        return None
 
     # --- Daily Task ---
 
@@ -183,9 +184,9 @@ class WritingPrompt(commands.Cog):
 
             try:
                 msg = await channel.send(embed=embed)
-                # Store the prompt message ID and its text, trimming old ones
+                # Store the prompt message ID, text, and timestamp, trimming old ones
                 async with self.config.guild(guild).prompt_messages() as pms:
-                    pms[str(msg.id)] = prompt
+                    pms[str(msg.id)] = (prompt, msg.created_at)
                     if len(pms) > 7:
                         oldest = sorted(pms.keys(), key=int)[:-7]
                         for k in oldest:
@@ -285,25 +286,31 @@ class WritingPrompt(commands.Cog):
         self.processed_messages.add(payload.message_id)
         self.user_cooldowns[payload.user_id] = now
 
-        # Find the original prompt for context
+        # Find the original prompt text AND date for context
         prompt_text = None
+        prompt_date = datetime.now(timezone.utc) # Default to now if we can't find the specific prompt
         prompt_messages = await self.config.guild(guild).prompt_messages()
 
         if message.reference and message.reference.message_id:
-            prompt_text = prompt_messages.get(str(message.reference.message_id))
+            entry = prompt_messages.get(str(message.reference.message_id))
+            if entry:
+                prompt_text, prompt_date = entry
 
         if not prompt_text:
             if prompt_messages:
                 latest_id = max(prompt_messages.keys(), key=int)
-                prompt_text = prompt_messages[latest_id]
+                prompt_text, prompt_date = prompt_messages[latest_id]
             else:
                 prompt_text = "(No prompt context available)"
 
+        # Format the date for the thread name (e.g., "May 05, 2026")
+        thread_name_date = prompt_date.strftime("%B %d, %Y")
+
         # Create a thread and start processing
         try:
-            # Create a new thread
+            # Create a new thread with the formatted date as the name
             thread = await message.create_thread(
-                name="✍️ AI Feedback",
+                name=thread_name_date,
                 auto_archive_duration=1440  # 24 hours
             )
             # Send processing status inside the thread
@@ -496,7 +503,7 @@ class WritingPrompt(commands.Cog):
         try:
             msg = await channel.send(embed=embed)
             async with self.config.guild(ctx.guild).prompt_messages() as pms:
-                pms[str(msg.id)] = prompt
+                pms[str(msg.id)] = (prompt, msg.created_at)
                 if len(pms) > 7:
                     oldest = sorted(pms.keys(), key=int)[:-7]
                     for k in oldest:
