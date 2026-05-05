@@ -1,2 +1,1 @@
-# adams-cogs
-andom cogs made by me for my bot made using the Red DiscordBot
+Random fun and utility cogs for [Red-DiscordBot](https://github.com/cog-creators/red-discordbot).
