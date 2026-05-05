@@ -104,57 +104,57 @@ class WritingPrompt(commands.Cog):
         return random.choice(self.default_prompts)
 
     async def get_llm_feedback(self, prompt: str, writing: str) -> Optional[str]:
-    """Send writing to OpenRouter's GPT-OSS-120B and get feedback."""
-    api_key = await self.config.openrouter_api_key()
-    if not api_key:
-        return None
+        """Send writing to OpenRouter's GPT-OSS-120B and get feedback."""
+        api_key = await self.config.openrouter_api_key()
+        if not api_key:
+            return None
 
-    system_msg = (
-        "You are a constructive writing feedback assistant. "
-        "A writer was given a writing prompt and wrote a response. "
-        "Provide thoughtful, encouraging feedback on their writing. "
-        "Comment on strengths and areas for improvement, provide examples of how fixes could be implemented. "
-        "Be specific and kind. Keep your response concise (under 500 words).\n\n"
-        "Format your response for Discord: use bullet points or numbered lists for clarity, and use **bold text** for emphasis. "
-        "Do NOT use markdown tables, headers, or code blocks, as they do not render well."
-    )
+        system_msg = (
+            "You are a constructive writing feedback assistant. "
+            "A writer was given a writing prompt and wrote a response. "
+            "Provide thoughtful, encouraging feedback on their writing. "
+            "Comment on strengths and areas for improvement, provide examples of how fixes could be implemented. "
+            "Be specific and kind. Keep your response concise (under 500 words).\n\n"
+            "Format your response for Discord: use bullet points or numbered lists for clarity, and use **bold text** for emphasis. "
+            "Do NOT use markdown tables, headers, or code blocks, as they do not render well."
+        )
 
-    user_msg = (
-        f"**Writing Prompt:** {prompt}\n\n"
-        f"**Writer's Response:**\n{writing}\n\n"
-        f"Please provide constructive feedback on this writing."
-    )
+        user_msg = (
+            f"**Writing Prompt:** {prompt}\n\n"
+            f"**Writer's Response:**\n{writing}\n\n"
+            f"Please provide constructive feedback on this writing."
+        )
 
-    payload = {
-        "model": "openai/gpt-oss-120b:free",
-        "messages": [
-            {"role": "system", "content": system_msg},
-            {"role": "user", "content": user_msg},
-        ],
-        "max_tokens": 1024,
-    }
+        payload = {
+            "model": "openai/gpt-oss-120b:free",
+            "messages": [
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": user_msg},
+            ],
+            "max_tokens": 1024,
+        }
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/red-discord-bot",
-        "X-Title": "WritingPrompt Cog",
-    }
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/red-discord-bot",
+            "X-Title": "WritingPrompt Cog",
+        }
 
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                json=payload,
-                headers=headers,
-                timeout=aiohttp.ClientTimeout(total=60),
-            ) as resp:
-                if resp.status != 200:
-                    return None
-                data = await resp.json()
-                return data["choices"][0]["message"]["content"]
-    except Exception:
-        return None
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    json=payload,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=60),
+                ) as resp:
+                    if resp.status != 200:
+                        return None
+                    data = await resp.json()
+                    return data["choices"][0]["message"]["content"]
+        except Exception:
+            return None
 
     # --- Daily Task ---
 
