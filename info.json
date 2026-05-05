@@ -1,0 +1,9 @@
+{
+    "name": "Adams-Cogs",
+    "short": "General purpose cogs by adammakesfilm",
+    "description": "Random cogs by adammakesfilm. Check out the individual cogs for more info.",
+    "install_msg": "Thanks for installing this repo. Have fun!",
+    "author": [
+        "adammakesfilm"
+    ]
+}
