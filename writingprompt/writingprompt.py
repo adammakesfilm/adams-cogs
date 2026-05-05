@@ -121,7 +121,7 @@ class WritingPrompt(commands.Cog):
         )
 
         payload = {
-            "model": "google/gemma-4-31b-it:free",
+            "model": "openai/gpt-oss-120b:free",
             "messages": [
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": user_msg},
