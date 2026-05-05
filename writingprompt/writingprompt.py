@@ -355,7 +355,7 @@ class WritingPrompt(commands.Cog):
         """Writing prompt configuration."""
         pass
 
-    @writingprompt.hybrid_command(name="apikey")
+    @writingprompt.command(name="apikey")
     @commands.is_owner()
     async def set_apikey(self, ctx: commands.Context, *, api_key: str):
         """Set the OpenRouter API key (bot owner only)."""
@@ -372,27 +372,27 @@ class WritingPrompt(commands.Cog):
             # For slash, send ephemeral so the key confirmation is private
             await ctx.send("✅ OpenRouter API key set!", ephemeral=True)
 
-    @writingprompt.hybrid_command()
+    @writingprompt.command()
     async def channel(self, ctx: commands.Context, channel: discord.TextChannel):
         """Set the channel for daily writing prompts."""
         await self.config.guild(ctx.guild).channel.set(channel.id)
         await ctx.send(f"✅ Daily writing prompts will be posted in {channel.mention}.")
 
-    @writingprompt.hybrid_command()
+    @writingprompt.command()
     async def reddit(self, ctx: commands.Context, enabled: bool):
         """Enable or disable fetching prompts from Reddit."""
         await self.config.guild(ctx.guild).use_reddit.set(enabled)
         status = "enabled" if enabled else "disabled"
         await ctx.send(f"✅ Reddit prompt fetching **{status}**.")
 
-    @writingprompt.hybrid_command()
+    @writingprompt.command()
     async def add(self, ctx: commands.Context, *, prompt: str):
         """Add a custom writing prompt to the rotation."""
         async with self.config.guild(ctx.guild).custom_prompts() as prompts:
             prompts.append(prompt)
         await ctx.send(f"✅ Custom prompt added: *{prompt}*")
 
-    @writingprompt.hybrid_command()
+    @writingprompt.command()
     async def remove(self, ctx: commands.Context, index: int):
         """Remove a custom prompt by its index."""
         async with self.config.guild(ctx.guild).custom_prompts() as prompts:
@@ -402,7 +402,7 @@ class WritingPrompt(commands.Cog):
             removed = prompts.pop(index - 1)
         await ctx.send(f"✅ Removed prompt: *{removed}*")
 
-    @writingprompt.hybrid_command(name="list")
+    @writingprompt.command(name="list")
     async def list_prompts(self, ctx: commands.Context):
         """List all custom prompts for this server."""
         custom = await self.config.guild(ctx.guild).custom_prompts()
@@ -415,7 +415,7 @@ class WritingPrompt(commands.Cog):
             text = text[:1997] + "..."
         await ctx.send(f"**Custom Prompts:**\n{text}")
 
-    @writingprompt.hybrid_command()
+    @writingprompt.command()
     async def pull(
         self,
         ctx: commands.Context,
@@ -450,7 +450,7 @@ class WritingPrompt(commands.Cog):
         embed.set_footer(text=f"Source: {source_label}")
         await ctx.send(embed=embed)
 
-    @writingprompt.hybrid_command()
+    @writingprompt.command()
     async def post(self, ctx: commands.Context):
         """Manually post today's prompt to the configured channel."""
         channel_id = await self.config.guild(ctx.guild).channel()
@@ -484,7 +484,7 @@ class WritingPrompt(commands.Cog):
         except discord.Forbidden:
             await ctx.send("❌ I don't have permission to send messages in that channel.")
 
-    @writingprompt.hybrid_command()
+    @writingprompt.command()
     async def settings(self, ctx: commands.Context):
         """Show current writing prompt settings."""
         data = await self.config.guild(ctx.guild).all()
