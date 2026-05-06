@@ -1,0 +1,26 @@
+{
+  "name": "Voteban",
+  "short": "Public starter voting system to ban users with quorum requirement",
+  "description": "Allows users to start public ban votes with reasons, requiring 1/3 server member participation for quorum. All voters except starter remain anonymous.",
+  "end_user_data_statement": "This cog stores data about votes, immunities, and cooldowns for the purpose of managing ban votes.",
+  "author": [
+    "YourName"
+  ],
+  "required_cogs": [],
+  "requirements": [],
+  "tags": [
+    "voting",
+    "moderation",
+    "ban"
+  ],
+  "min_bot_version": "3.5.0",
+  "max_bot_version": "3.5.99",
+  "min_python_version": [
+    3,
+    8,
+    0
+  ],
+  "hidden": false,
+  "disabled": false,
+  "install_msg": "Thanks for installing Voteban cog! Use `/voteban` to start a vote with a reason."
+}
