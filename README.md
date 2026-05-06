@@ -17,3 +17,8 @@ Allow users to democratically vote to ban a user from your Discord server. A use
 - If less than 50% votes to ban, the user in question is then immune to being voted out for the next 6 months. 
 - If a vote does not include 1/3 of users, the vote fails and nobody is banned nor are any cooldowns applied.  
 The user who cast a vote has a 6 month cooldown from being able to start another vote, the user who started the vote is the only user who is not annonomous. 
+
+---
+### Licence
+These cogs were developed with assistance from [GLM-4.7](https://z.ai/blog/glm-4.7). The code is released under the MIT License.
+
