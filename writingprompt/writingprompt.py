@@ -294,12 +294,27 @@ class WritingPrompt(commands.Cog):
         if message.reference and message.reference.message_id:
             entry = prompt_messages.get(str(message.reference.message_id))
             if entry:
-                prompt_text, prompt_date = entry
+                # FIX: Handle legacy string data vs new tuple data
+                if isinstance(entry, str):
+                    prompt_text = entry
+                    prompt_date = datetime.now(timezone.utc)
+                    # Update config to new format to prevent future crashes
+                    async with self.config.guild(guild).prompt_messages() as pms:
+                        pms[str(message.reference.message_id)] = (prompt_text, prompt_date)
+                else:
+                    prompt_text, prompt_date = entry
 
         if not prompt_text:
             if prompt_messages:
-                latest_id = max(prompt_messages.keys(), key=int)
-                prompt_text, prompt_date = prompt_messages[latest_id]
+                # Find the latest prompt and handle legacy format
+                all_entries = list(prompt_messages.values())
+                if all_entries:
+                    latest_entry = all_entries[-1]
+                    if isinstance(latest_entry, str):
+                        prompt_text = latest_entry
+                        prompt_date = datetime.now(timezone.utc)
+                    else:
+                        prompt_text, prompt_date = latest_entry
             else:
                 prompt_text = "(No prompt context available)"
 
@@ -528,4 +543,4 @@ class WritingPrompt(commands.Cog):
         embed.add_field(name="Reddit Fetch", value=reddit_text, inline=True)
         embed.add_field(name="Custom Prompts", value=str(custom_count), inline=True)
         embed.add_field(name="LLM API Key", value=api_text, inline=True)
-        await ctx.send(embed)
+        await ctx.send(embed=embed)
