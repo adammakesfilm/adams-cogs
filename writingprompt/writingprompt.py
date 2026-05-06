@@ -22,15 +22,16 @@ class WritingPrompt(commands.Cog):
             channel=None,
             use_reddit=True,
             custom_prompts=[],
-            prompt_messages={},  # {message_id: (prompt_text, post_timestamp)}
+            # {message_id: {"prompt": str, "timestamp": iso8601_str}}
+            prompt_messages={},
         )
         self.config.register_global(
             openrouter_api_key=None,
         )
 
         # Runtime state (not persisted)
-        self.processed_messages = set()  # Message IDs we've already given feedback on
-        self.user_cooldowns = {}  # {user_id: last_request_timestamp}
+        self.processed_messages = set()
+        self.user_cooldowns = {}
 
         self.default_prompts = [
             "A dragon knocks on your door, but it's not here to fight—it's here to borrow sugar.",
@@ -62,6 +63,43 @@ class WritingPrompt(commands.Cog):
     def cog_unload(self):
         """Called when the cog is unloaded. Stop the loop."""
         self.daily_prompt.cancel()
+
+    # --- Helpers ---
+
+    def _make_prompt_entry(self, prompt: str, dt: datetime) -> dict:
+        """Create a Config-safe prompt entry dict."""
+        return {
+            "prompt": prompt,
+            "timestamp": dt.astimezone(timezone.utc).isoformat(),
+        }
+
+    def _parse_prompt_entry(self, entry) -> tuple[str, datetime]:
+        """
+        Parse a stored prompt entry into (prompt_text, datetime).
+        Handles legacy formats (plain strings or old tuples) gracefully.
+        """
+        # New format: dict with 'prompt' and 'timestamp' keys
+        if isinstance(entry, dict):
+            prompt_text = entry.get("prompt", "(No prompt context available)")
+            ts_str = entry.get("timestamp")
+            if ts_str:
+                try:
+                    prompt_date = datetime.fromisoformat(ts_str)
+                except (ValueError, TypeError):
+                    prompt_date = datetime.now(timezone.utc)
+            else:
+                prompt_date = datetime.now(timezone.utc)
+            return prompt_text, prompt_date
+
+        # Legacy format: plain string
+        if isinstance(entry, str):
+            return entry, datetime.now(timezone.utc)
+
+        # Legacy format: list/tuple [prompt, timestamp_str_or_something]
+        if isinstance(entry, (list, tuple)) and len(entry) >= 1:
+            return str(entry[0]), datetime.now(timezone.utc)
+
+        return "(No prompt context available)", datetime.now(timezone.utc)
 
     # --- Core Logic ---
 
@@ -184,9 +222,8 @@ class WritingPrompt(commands.Cog):
 
             try:
                 msg = await channel.send(embed=embed)
-                # Store the prompt message ID, text, and timestamp, trimming old ones
                 async with self.config.guild(guild).prompt_messages() as pms:
-                    pms[str(msg.id)] = (prompt, msg.created_at)
+                    pms[str(msg.id)] = self._make_prompt_entry(prompt, msg.created_at)
                     if len(pms) > 7:
                         oldest = sorted(pms.keys(), key=int)[:-7]
                         for k in oldest:
@@ -203,15 +240,10 @@ class WritingPrompt(commands.Cog):
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
         """Listen for ❓ reactions on messages in the prompt channel."""
-        # Filter: only ❓ emoji
         if payload.emoji.name != "❓":
             return
-
-        # Filter: ignore the bot's own reactions
         if payload.user_id == self.bot.user.id:
             return
-
-        # Filter: only in a guild
         if payload.guild_id is None:
             return
 
@@ -223,30 +255,23 @@ class WritingPrompt(commands.Cog):
         if channel is None:
             return
 
-        # Filter: must be the configured prompt channel
         config_channel_id = await self.config.guild(guild).channel()
         if channel.id != config_channel_id:
             return
 
-        # Filter: already processed this message
         if payload.message_id in self.processed_messages:
             return
 
-        # Fetch the message that was reacted to
         try:
             message = await channel.fetch_message(payload.message_id)
         except (discord.NotFound, discord.Forbidden):
             return
 
-        # Filter: ignore reactions on bot messages (prompt posts themselves)
         if message.author.id == self.bot.user.id:
             return
-
-        # Filter: only the writer can trigger feedback on their own writing
         if payload.user_id != message.author.id:
             return
 
-        # Filter: message must have content
         if not message.content or not message.content.strip():
             try:
                 await message.reply(
@@ -270,7 +295,6 @@ class WritingPrompt(commands.Cog):
                 pass
             return
 
-        # Check that an API key is configured
         api_key = await self.config.openrouter_api_key()
         if not api_key:
             try:
@@ -286,58 +310,37 @@ class WritingPrompt(commands.Cog):
         self.processed_messages.add(payload.message_id)
         self.user_cooldowns[payload.user_id] = now
 
-        # Find the original prompt text AND date for context
+        # --- Resolve the prompt context ---
         prompt_text = None
-        prompt_date = datetime.now(timezone.utc) # Default to now if we can't find the specific prompt
+        prompt_date = datetime.now(timezone.utc)
         prompt_messages = await self.config.guild(guild).prompt_messages()
 
-        # Attempt 1: Check if the user directly replied to a prompt
+        # Attempt 1: user directly replied to a known prompt message
         if message.reference and message.reference.message_id:
-            entry = prompt_messages.get(str(message.reference.message_id))
-            if entry:
-                # Handle legacy string data vs new tuple data
-                if isinstance(entry, str):
-                    prompt_text = entry
-                    prompt_date = datetime.now(timezone.utc)
-                    # Update config to new format to prevent future crashes
-                    async with self.config.guild(guild).prompt_messages() as pms:
-                        pms[str(message.reference.message_id)] = (prompt_text, prompt_date)
-                else:
-                    prompt_text, prompt_date = entry
+            ref_id = str(message.reference.message_id)
+            if ref_id in prompt_messages:
+                prompt_text, prompt_date = self._parse_prompt_entry(prompt_messages[ref_id])
 
-        # Attempt 2 (Fallback): Find the chronologically latest prompt if no reply was detected
+        # Attempt 2: fall back to the most recently posted prompt by timestamp
+        if not prompt_text and prompt_messages:
+            parsed = [self._parse_prompt_entry(e) for e in prompt_messages.values()]
+            parsed.sort(key=lambda x: x[1], reverse=True)
+            prompt_text, prompt_date = parsed[0]
+
         if not prompt_text:
-            if prompt_messages:
-                # Convert all entries to tuples, sanitizing legacy strings
-                clean_entries = []
-                for e in prompt_messages.values():
-                    if isinstance(e, str):
-                        # Legacy: treat as old entry
-                        clean_entries.append((e, datetime.min.replace(tzinfo=timezone.utc)))
-                    else:
-                        clean_entries.append(e)
+            prompt_text = "(No prompt context available)"
 
-                # Sort by timestamp (index 1) descending to get the most recent
-                clean_entries.sort(key=lambda x: x[1], reverse=True)
-                if clean_entries:
-                    prompt_text, prompt_date = clean_entries[0]
-            else:
-                prompt_text = "(No prompt context available)"
-
-        # Format the date for the thread name (e.g., "May 05, 2026")
+        # Format the date for the thread name (e.g., "May 06, 2026")
         thread_name_date = prompt_date.strftime("%B %d, %Y")
 
-        # Create a thread and start processing
+        # Create a thread under the user's message
         try:
-            # Create a new thread with the formatted date as the name
             thread = await message.create_thread(
                 name=thread_name_date,
-                auto_archive_duration=1440  # 24 hours
+                auto_archive_duration=1440
             )
-            # Send processing status inside the thread
             processing_msg = await thread.send("🔍 Getting feedback on your writing...")
         except (discord.Forbidden, discord.HTTPException) as e:
-            # If we can't create a thread, fallback to error handling
             print(f"[WritingPrompt] Error creating thread: {e}")
             self.processed_messages.discard(payload.message_id)
             self.user_cooldowns.pop(payload.user_id, None)
@@ -354,7 +357,6 @@ class WritingPrompt(commands.Cog):
         feedback = await self.get_llm_feedback(prompt_text, message.content)
 
         if feedback:
-            # Truncate if necessary
             truncated = False
             if len(feedback) > 4000:
                 feedback = feedback[:4000] + "..."
@@ -371,19 +373,15 @@ class WritingPrompt(commands.Cog):
             embed.set_footer(text=footer)
 
             try:
-                # Edit the processing message inside the thread with the result
                 await processing_msg.edit(content=None, embed=embed)
             except discord.HTTPException:
-                # Fallback to plain text if embed fails inside thread
                 await processing_msg.edit(
                     content=f"📝 **Writing Feedback:**\n{feedback[:1900]}"
                 )
         else:
-            # Failure: allow retry by clearing processed state
             self.processed_messages.discard(payload.message_id)
             self.user_cooldowns.pop(payload.user_id, None)
             try:
-                # Edit the processing message inside the thread with the error
                 await processing_msg.edit(
                     content="❌ Could not get feedback from the LLM. "
                     "The API may be down or rate-limited. Try again later."
@@ -391,7 +389,7 @@ class WritingPrompt(commands.Cog):
             except discord.Forbidden:
                 pass
 
-        # Remove the reaction (requires Manage Messages permission)
+        # Remove the ❓ reaction
         try:
             await message.remove_reaction("❓", message.author)
         except (discord.Forbidden, discord.NotFound, discord.HTTPException):
@@ -410,7 +408,6 @@ class WritingPrompt(commands.Cog):
         """Set the OpenRouter API key (bot owner only)."""
         await self.config.openrouter_api_key.set(api_key)
 
-        # Delete the invoking text message if possible (to hide the key)
         if ctx.interaction is None:
             try:
                 await ctx.message.delete()
@@ -418,7 +415,6 @@ class WritingPrompt(commands.Cog):
                 pass
             await ctx.send("✅ OpenRouter API key set!")
         else:
-            # For slash, send ephemeral so the key confirmation is private
             await ctx.send("✅ OpenRouter API key set!", ephemeral=True)
 
     @writingprompt.command()
@@ -497,16 +493,13 @@ class WritingPrompt(commands.Cog):
             color=discord.Color.brand_red(),
         )
         embed.set_footer(text=f"Source: {source_label}")
-
-        # Send the message
         msg = await ctx.send(embed=embed)
 
-        # FIX: Save the pull to history if it matches the configured channel
-        # This ensures that writing for "pulled" prompts gets the correct feedback context
+        # Save to history if posted in the configured channel
         configured_channel_id = await self.config.guild(ctx.guild).channel()
         if configured_channel_id and ctx.channel.id == configured_channel_id:
             async with self.config.guild(ctx.guild).prompt_messages() as pms:
-                pms[str(msg.id)] = (prompt, msg.created_at)
+                pms[str(msg.id)] = self._make_prompt_entry(prompt, msg.created_at)
                 if len(pms) > 7:
                     oldest = sorted(pms.keys(), key=int)[:-7]
                     for k in oldest:
@@ -537,7 +530,7 @@ class WritingPrompt(commands.Cog):
         try:
             msg = await channel.send(embed=embed)
             async with self.config.guild(ctx.guild).prompt_messages() as pms:
-                pms[str(msg.id)] = (prompt, msg.created_at)
+                pms[str(msg.id)] = self._make_prompt_entry(prompt, msg.created_at)
                 if len(pms) > 7:
                     oldest = sorted(pms.keys(), key=int)[:-7]
                     for k in oldest:
