@@ -1,22 +1,30 @@
 {
-    "author" : [
+    "author": [
         "adammakesfilm"
     ],
-    "description" : "Cog that posts a random writing prompt for users to write about.",
-    "disabled" : false,
-    "end_user_data_statement" : "This cog does not persistently store any data or metadata about users.",
-    "hidden" : false,
-    "install_msg" : "Thanks for installing the cog, run `[p]load writingprompt` to load it.",
-    "max_bot_version" : "0.0.0",
-    "min_bot_version" : "3.3.10",
-    "name" : "Writing Prompts",
-    "permissions" : [],
-    "required_cogs" : {},
-    "requirements" : [],
-    "short" : "Writing prompts.",
-    "tags" : [
-        "writing",
-        "fun"
+    "description": "Cog that posts a daily writing prompt at 4 PM UTC and provides constructive AI feedback via threads when users react with ❓.",
+    "disabled": false,
+    "end_user_data_statement": "This cog does not persistently store any data or metadata about users.",
+    "hidden": false,
+    "install_msg": "Thanks for installing Writing Prompts!\n\n**Setup Instructions:**\n1. **Developer Portal:** Enable the **Message Content Intent** for your bot application.\n2. **Permissions:** Ensure the bot has **Embed Links**, **Create Public Threads**, **Add Reactions**, and **Manage Messages** in the channel you want to use.\n3. **Load:** Run `[p]load writingprompt`.\n4. **Channel:** Run `/writingprompt channel #your-channel` to set the prompt channel.\n5. **API Key:** Run `/writingprompt apikey YOUR_KEY` (Bot Owner only) to set the OpenRouter API key for AI feedback.\n\n**Available Commands:**\n- `/writingprompt settings`: View current configuration.\n- `/writingprompt channel`: Set the prompt channel.\n- `/writingprompt reddit`: Toggle Reddit sourcing (Default: Enabled).\n- `/writingprompt add <prompt>`: Add a custom prompt.\n- `/writingprompt remove <#>`: Remove a custom prompt.\n- `/writingprompt list`: List custom prompts.\n- `/writingprompt pull`: Pull a writing prompt on demand.\n- `/writingprompt post`: Manually post the daily prompt.",
+    "max_bot_version": "0.0.0",
+    "min_bot_version": "3.3.10",
+    "name": "Writing Prompts",
+    "permissions": [
+        "embed_links",
+        "send_messages",
+        "read_message_history",
+        "create_public_threads",
+        "manage_messages",
+        "add_reactions"
     ],
-    "type" : "COG"
+    "required_cogs": {},
+    "requirements": [],
+    "short": "Daily writing prompts with AI feedback.",
+    "tags": [
+        "writing",
+        "fun",
+        "ai"
+    ],
+    "type": "COG"
 }
