@@ -291,10 +291,11 @@ class WritingPrompt(commands.Cog):
         prompt_date = datetime.now(timezone.utc) # Default to now if we can't find the specific prompt
         prompt_messages = await self.config.guild(guild).prompt_messages()
 
+        # Attempt 1: Check if the user directly replied to a prompt
         if message.reference and message.reference.message_id:
             entry = prompt_messages.get(str(message.reference.message_id))
             if entry:
-                # FIX: Handle legacy string data vs new tuple data
+                # Handle legacy string data vs new tuple data
                 if isinstance(entry, str):
                     prompt_text = entry
                     prompt_date = datetime.now(timezone.utc)
@@ -304,17 +305,22 @@ class WritingPrompt(commands.Cog):
                 else:
                     prompt_text, prompt_date = entry
 
+        # Attempt 2 (Fallback): Find the chronologically latest prompt if no reply was detected
         if not prompt_text:
             if prompt_messages:
-                # Find the latest prompt and handle legacy format
-                all_entries = list(prompt_messages.values())
-                if all_entries:
-                    latest_entry = all_entries[-1]
-                    if isinstance(latest_entry, str):
-                        prompt_text = latest_entry
-                        prompt_date = datetime.now(timezone.utc)
+                # Convert all entries to tuples, sanitizing legacy strings
+                clean_entries = []
+                for e in prompt_messages.values():
+                    if isinstance(e, str):
+                        # Legacy: treat as old entry
+                        clean_entries.append((e, datetime.min.replace(tzinfo=timezone.utc)))
                     else:
-                        prompt_text, prompt_date = latest_entry
+                        clean_entries.append(e)
+
+                # Sort by timestamp (index 1) descending to get the most recent
+                clean_entries.sort(key=lambda x: x[1], reverse=True)
+                if clean_entries:
+                    prompt_text, prompt_date = clean_entries[0]
             else:
                 prompt_text = "(No prompt context available)"
 
@@ -491,7 +497,20 @@ class WritingPrompt(commands.Cog):
             color=discord.Color.brand_red(),
         )
         embed.set_footer(text=f"Source: {source_label}")
-        await ctx.send(embed=embed)
+
+        # Send the message
+        msg = await ctx.send(embed=embed)
+
+        # FIX: Save the pull to history if it matches the configured channel
+        # This ensures that writing for "pulled" prompts gets the correct feedback context
+        configured_channel_id = await self.config.guild(ctx.guild).channel()
+        if configured_channel_id and ctx.channel.id == configured_channel_id:
+            async with self.config.guild(ctx.guild).prompt_messages() as pms:
+                pms[str(msg.id)] = (prompt, msg.created_at)
+                if len(pms) > 7:
+                    oldest = sorted(pms.keys(), key=int)[:-7]
+                    for k in oldest:
+                        del pms[k]
 
     @writingprompt.command()
     async def post(self, ctx: commands.Context):
