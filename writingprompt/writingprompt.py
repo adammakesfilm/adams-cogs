@@ -24,6 +24,7 @@ class WritingPrompt(commands.Cog):
             custom_prompts=[],
             # {message_id: {"prompt": str, "timestamp": iso8601_str}}
             prompt_messages={},
+            daily_enabled=True,
         )
         self.config.register_global(
             openrouter_api_key=None,
@@ -201,6 +202,8 @@ class WritingPrompt(commands.Cog):
     async def daily_prompt(self):
         all_guilds = await self.config.all_guilds()
         for guild_id, data in all_guilds.items():
+            if not data.get("daily_enabled", True):
+                continue
             channel_id = data.get("channel")
             if channel_id is None:
                 continue
@@ -544,16 +547,27 @@ class WritingPrompt(commands.Cog):
     async def settings(self, ctx: commands.Context):
         """Show current writing prompt settings."""
         data = await self.config.guild(ctx.guild).all()
-        channel = ctx.guild.get_channel(data["channel"]) if data["channel"] else None
+        channel = ctx.guild.get_channel(data["channel"]) if data.get("channel") else None
         channel_text = channel.mention if channel else "Not set"
-        reddit_text = "Enabled" if data["use_reddit"] else "Disabled"
-        custom_count = len(data["custom_prompts"])
+        reddit_text = "Enabled" if data.get("use_reddit") else "Disabled"
+        custom_count = len(data.get("custom_prompts", []))
         api_key_set = bool(await self.config.openrouter_api_key())
         api_text = "Set ✅" if api_key_set else "Not set ❌"
 
+        daily_text = "Enabled" if data.get("daily_enabled", True) else "Disabled"
+
         embed = discord.Embed(title="Writing Prompt Settings", color=discord.Color.brand_red())
         embed.add_field(name="Channel", value=channel_text, inline=True)
+        embed.add_field(name="Daily Post", value=daily_text, inline=True) # <--- ADD THIS LINE
         embed.add_field(name="Reddit Fetch", value=reddit_text, inline=True)
         embed.add_field(name="Custom Prompts", value=str(custom_count), inline=True)
         embed.add_field(name="LLM API Key", value=api_text, inline=True)
         await ctx.send(embed=embed)
+
+
+    @writingprompt.command(name="daily")
+    async def toggle_daily(self, ctx: commands.Context, enabled: bool):
+        """Enable or disable automatic daily prompting."""
+        await self.config.guild(ctx.guild).daily_enabled.set(enabled)
+        status = "enabled" if enabled else "disabled"
+        await ctx.send(f"✅ Daily prompt posting is now **{status}**.")
