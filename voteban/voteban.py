@@ -343,9 +343,9 @@ class Voteban(commands.Cog):
                     return
 
             # Create new vote
-            async with self.config.vote_counter() as counter:
-                self.config.vote_counter.set(counter + 1)
-                vote_id = str(counter)
+            counter = await self.config.vote_counter()
+            vote_id = str(counter)
+            await self.config.vote_counter.set(counter + 1)
 
             vote_data = {
                 'guild_id': interaction.guild.id,
