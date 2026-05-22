@@ -20,6 +20,7 @@ The user who cast a vote has a 6 month cooldown from being able to start another
 
 ### FAQ
 ![Static Badge](https://img.shields.io/badge/Cog_Status:-Under_Development-orange?style=flat)
+
 This is a FAQ cog that is written to be data based, so that all you have to do is add in your own custom faq embeds and everything else will work just fine. At the moment, it's setup to be used on my own personal server, but if you want to use it for yourself, just fork the repository and modify the `self.faq_data` section. 
 
 
