@@ -10,13 +10,18 @@ You can take it further and react to your own prompt response with ❓ and your 
 
 
 ### VoteBan
-![Static Badge](https://img.shields.io/badge/Cog_Status:-Under_Development-orange?style=flat)
+![Static Badge](https://img.shields.io/badge/Cog_Status:-Ready_To_Use-brightgreen?style=flat)
 
 Allow users to democratically vote to ban a user from your Discord server. A user can start a ban vote, and a reason and then it will be live for 24 hours: 
 - If at least 50% of votes to ban someone, they are removed from the server. 
 - If less than 50% votes to ban, the user in question is then immune to being voted out for the next 6 months. 
 - If a vote does not include 1/3 of users, the vote fails and nobody is banned nor are any cooldowns applied.  
 The user who cast a vote has a 6 month cooldown from being able to start another vote, the user who started the vote is the only user who is not annonomous. 
+
+### FAQ
+![Static Badge](https://img.shields.io/badge/Cog_Status:-Under_Development-orange?style=flat)
+This is a FAQ cog that is written to be data based, so that all you have to do is add in your own custom faq embeds and everything else will work just fine. At the moment, it's setup to be used on my own personal server, but if you want to use it for yourself, just fork the repository and modify the `self.faq_data` section. 
+
 
 ---
 ### Licence
