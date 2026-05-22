@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import asyncio
 from discord import app_commands
 from discord.ui import View, Button, button
+import math
 
 class VotebanView(View):
     """Button view for anonymous voting"""
@@ -30,7 +31,7 @@ class VotebanView(View):
         await self.cog.handle_status_button(interaction, self.vote_id)
 
 class Voteban(commands.Cog):
-    """Public starter voting system to ban users with quorum requirement"""
+    """Anonymous voting system to ban users with slash commands and buttons"""
 
     def __init__(self, bot):
         self.bot = bot
@@ -42,7 +43,7 @@ class Voteban(commands.Cog):
 
         # Define config structure
         self.config.register_global(
-            active_votes={},  # {vote_id: {target_id, starter_id, starter_name, reason, start_time, votes: {user_id: vote}, message_id, guild_id, channel_id}}
+            active_votes={},  # {vote_id: {target_id, starter_id, start_time, votes: {user_id: vote}, message_id}}
             immunities={},    # {user_id: immunity_end_time}
             cooldowns={},     # {user_id: cooldown_end_time}
             vote_counter=0    # To generate unique vote IDs
@@ -78,6 +79,17 @@ class Voteban(commands.Cog):
             for vote_id in completed_votes:
                 await self.finalize_vote(vote_id, votes.pop(vote_id))
 
+    async def calculate_quorum(self, guild):
+        """Calculate quorum requirement (1/3 of server members)"""
+        # Get total member count
+        total_members = guild.member_count
+
+        # Calculate quorum (at least 1/3 of members)
+        quorum = math.ceil(total_members / 3)
+
+        # Ensure minimum quorum of at least 3 members (to avoid edge cases)
+        return max(quorum, 3)
+
     async def finalize_vote(self, vote_id, vote_data):
         """Finalize a vote and take action based on results"""
         guild = self.bot.get_guild(vote_data['guild_id'])
@@ -95,53 +107,54 @@ class Voteban(commands.Cog):
         if total_votes == 0:
             return  # No votes, nothing to do
 
-        # Calculate quorum - need 1/3 of server members
-        # Filter out bots from member count
-        human_members = len([m for m in guild.members if not m.bot])
-        required_votes = max(1, int(human_members / 3))
+        # Calculate quorum
+        quorum = await self.calculate_quorum(guild)
 
+        # Check if quorum was met
+        if total_votes < quorum:
+            # Quorum not met - vote fails, nothing happens
+            await self.handle_quorum_failure(vote_id, vote_data, guild, total_votes, quorum)
+            return
+
+        # Quorum met - proceed with vote result
         ban_percentage = (ban_votes / total_votes) * 100
 
-        # Check quorum and vote percentage
         async with self.config.immunities() as immunities:
-            # Check if quorum is met
-            quorum_met = total_votes >= required_votes
-
-            if quorum_met and ban_percentage > 50:
-                # Ban the user - quorum met and majority voted to ban
+            if ban_percentage > 50:
+                # Ban the user
                 try:
-                    await guild.ban(target, reason=f"Ban vote passed by {vote_data['starter_name']}: {vote_data['reason']} ({ban_votes}/{total_votes} votes)")
+                    await guild.ban(target, reason=f"Ban vote passed: {ban_votes}/{total_votes} votes")
                     # Remove immunity if they had any
                     if str(target.id) in immunities:
                         del immunities[str(target.id)]
-                    result = "BANNED"
-                    result_emoji = "🔨"
-                    color = 0xFF0000
+                    result = "banned"
+                    color = 0xFFD700
                 except discord.Forbidden:
-                    result = "FAILED (Missing Permissions)"
-                    result_emoji = "⚠️"
-                    color = 0xFFA500
+                    result = "failed (bot lacks permission)"
+                    color = 0xFF0000
             else:
-                # Grant immunity for 6 months if quorum was met but vote failed
-                if quorum_met:
-                    immunity_end = (datetime.now() + timedelta(days=180)).isoformat()
-                    immunities[str(target.id)] = immunity_end
-                    result = "KEPT (Immunity Granted)"
-                    result_emoji = "🛡️"
-                    color = 0x00FF00
-                else:
-                    # Quorum not met - no immunity granted, no cooldown
-                    result = "FAILED (Quorum Not Met)"
-                    result_emoji = "📊"
-                    color = 0x808080
-
-        # Remove cooldown if quorum wasn't met
-        if not quorum_met:
-            async with self.config.cooldowns() as cooldowns:
-                if str(vote_data['starter_id']) in cooldowns:
-                    del cooldowns[str(vote_data['starter_id'])]
+                # Grant immunity for 6 months (includes 50% ties)
+                immunity_end = (datetime.now() + timedelta(days=180)).isoformat()
+                immunities[str(target.id)] = immunity_end
+                result = "kept (6-month immunity granted)"
+                color = 0x00FF00
 
         # Update the original message to show results
+        await self.update_vote_completion_message(vote_id, vote_data, guild, target, 
+                                                  ban_votes, total_votes, result, color)
+
+    async def handle_quorum_failure(self, vote_id, vote_data, guild, total_votes, quorum):
+        """Handle case where quorum was not met"""
+        # Remove the starter's cooldown since vote didn't count
+        async with self.config.cooldowns() as cooldowns:
+            if str(vote_data['starter_id']) in cooldowns:
+                del cooldowns[str(vote_data['starter_id'])]
+
+        # Get target for message
+        target = guild.get_member(vote_data['target_id'])
+        target_name = target.display_name if target else "Unknown User"
+
+        # Update the original message to show quorum failure
         if 'message_id' in vote_data:
             try:
                 channel = guild.get_channel(vote_data['channel_id'])
@@ -149,17 +162,44 @@ class Voteban(commands.Cog):
                     message = await channel.fetch_message(vote_data['message_id'])
 
                     embed = discord.Embed(
-                        title="🗳️ Ban Vote Completed",
+                        title="Quorum Not Met - Vote Failed",
+                        description=f"Vote against {target_name} did not reach required participation",
+                        color=0xFF0000
+                    )
+
+                    embed.add_field(name="Result", value="VOTE FAILED - Insufficient participation", inline=False)
+                    embed.add_field(name="Votes Cast", value=f"{total_votes}/{quorum} required", inline=False)
+                    embed.add_field(name="Quorum Requirement", value=f"At least {quorum} members must vote (1/3 of server)", inline=False)
+                    embed.add_field(name="Consequences", value="No cooldowns applied, no actions taken", inline=False)
+                    embed.set_footer(text=f"Vote ID: {vote_id}")
+
+                    view = VotebanView(vote_id, self)
+                    for child in view.children:
+                        child.disabled = True
+
+                    await message.edit(embed=embed, view=view)
+            except Exception as e:
+                print(f"Error updating quorum failure message: {e}")
+
+    async def update_vote_completion_message(self, vote_id, vote_data, guild, target, 
+                                            ban_votes, total_votes, result, color):
+        """Update the vote completion message"""
+        if 'message_id' in vote_data:
+            try:
+                channel = guild.get_channel(vote_data['channel_id'])
+                if channel:
+                    message = await channel.fetch_message(vote_data['message_id'])
+
+                    embed = discord.Embed(
+                        title="Ban Vote Completed",
                         description=f"Vote against {target.mention}",
                         color=color
                     )
 
-                    embed.add_field(name="Result", value=f"**{result}** {result_emoji}", inline=False)
-                    embed.add_field(name="Votes", value=f"🔨 {ban_votes} vs 🛡️ {total_votes - ban_votes}", inline=False)
-                    embed.add_field(name="Percentage", value=f"{ban_percentage:.1f}% voted to ban", inline=False)
-                    embed.add_field(name="Quorum", value=f"Required: {required_votes} votes • Actual: {total_votes} votes", inline=False)
-                    embed.add_field(name="Starter", value=f"{vote_data['starter_name']} (ID: {vote_data['starter_id']})", inline=False)
-                    embed.add_field(name="Reason", value=vote_data['reason'], inline=False)
+                    embed.add_field(name="Result", value=f"{result.upper()}", inline=False)
+                    embed.add_field(name="Votes", value=f"BAN: {ban_votes} | KEEP: {total_votes - ban_votes}", inline=False)
+                    embed.add_field(name="Percentage", value=f"{(ban_votes/total_votes)*100:.1f}% voted to ban", inline=False)
+                    embed.add_field(name="Quorum", value=f"Met ({total_votes} votes cast)", inline=False)
                     embed.set_footer(text=f"Vote ID: {vote_id}")
 
                     view = VotebanView(vote_id, self)
@@ -209,37 +249,35 @@ class Voteban(commands.Cog):
 
             vote_data = votes[vote_id]
             start_time = datetime.fromisoformat(vote_data['start_time'])
-            remaining = timedelta(hours=24) - (datetime.now() - start_time)
-
-            if remaining.total_seconds() <= 0:
-                remaining_str = "Voting has ended"
-            else:
-                hours = int(remaining.total_seconds() // 3600)
-                minutes = int((remaining.total_seconds() % 3600) // 60)
-                remaining_str = f"{hours}h {minutes}m remaining"
+            end_time = start_time + timedelta(hours=24)
+            unix_end_time = int(end_time.timestamp())
 
             total_votes = len(vote_data['votes'])
             ban_votes = sum(1 for v in vote_data['votes'].values() if v == 'ban')
 
-            # Calculate quorum status
-            guild = self.bot.get_guild(vote_data['guild_id'])
-            human_members = len([m for m in guild.members if not m.bot])
-            required_votes = max(1, int(human_members / 3))
-            quorum_status = f"{total_votes}/{required_votes} votes needed"
+            # Calculate quorum
+            guild = interaction.guild
+            quorum = await self.calculate_quorum(guild)
+            remaining_for_quorum = max(0, quorum - total_votes)
 
             embed = discord.Embed(
-                title="📊 Vote Status",
+                title="Vote Status",
                 description=f"Current vote progress",
                 color=0x00BFFF
             )
 
             embed.add_field(name="Target", value=f"<@{vote_data['target_id']}>", inline=False)
-            embed.add_field(name="Starter", value=f"{vote_data['starter_name']}", inline=True)
-            embed.add_field(name="Reason", value=vote_data['reason'], inline=True)
-            embed.add_field(name="Time Remaining", value=remaining_str, inline=True)
+            embed.add_field(name="Time Remaining", value=f"<t:{unix_end_time}:R>", inline=True)
             embed.add_field(name="Total Votes", value=str(total_votes), inline=True)
-            embed.add_field(name="Quorum Status", value=quorum_status, inline=True)
-            embed.add_field(name="Vote Breakdown", value=f"🔨 Ban: {ban_votes}\n🛡️ Keep: {total_votes - ban_votes}", inline=False)
+
+            # Quorum information
+            if total_votes >= quorum:
+                quorum_status = f"Met ({total_votes}/{quorum} required)"
+            else:
+                quorum_status = f"Not met ({total_votes}/{quorum} required, {remaining_for_quorum} more needed)"
+
+            embed.add_field(name="Quorum Status", value=quorum_status, inline=False)
+            embed.add_field(name="Vote Breakdown", value=f"BAN: {ban_votes} | KEEP: {total_votes - ban_votes}", inline=False)
 
             if total_votes > 0:
                 percentage = (ban_votes / total_votes) * 100
@@ -255,38 +293,37 @@ class Voteban(commands.Cog):
             total_votes = len(vote_data['votes'])
             ban_votes = sum(1 for v in vote_data['votes'].values() if v == 'ban')
             start_time = datetime.fromisoformat(vote_data['start_time'])
-            remaining = timedelta(hours=24) - (datetime.now() - start_time)
+            end_time = start_time + timedelta(hours=24)
+            unix_end_time = int(end_time.timestamp())
 
-            if remaining.total_seconds() <= 0:
-                remaining_str = "Voting has ended"
-            else:
-                hours = int(remaining.total_seconds() // 3600)
-                minutes = int((remaining.total_seconds() % 3600) // 60)
-                remaining_str = f"{hours}h {minutes}m remaining"
-
-            # Calculate quorum status
-            guild = self.bot.get_guild(vote_data['guild_id'])
-            human_members = len([m for m in guild.members if not m.bot])
-            required_votes = max(1, int(human_members / 3))
-            quorum_status = f"{total_votes}/{required_votes} votes needed"
+            # Calculate quorum
+            guild = interaction.guild
+            quorum = await self.calculate_quorum(guild)
 
             embed = discord.Embed(
-                title="🗳️ Ban Vote Started",
+                title="Ban Vote Started",
                 description=f"Vote to ban <@{vote_data['target_id']}> from the server",
                 color=0xFF4500
             )
 
-            embed.add_field(name="Started By", value=f"{vote_data['starter_name']}", inline=False)
-            embed.add_field(name="Reason", value=vote_data['reason'], inline=False)
-            embed.add_field(name="Time Remaining", value=remaining_str, inline=True)
+            embed.add_field(name="Time Remaining", value=f"<t:{unix_end_time}:R>", inline=True)
             embed.add_field(name="Total Votes", value=str(total_votes), inline=True)
-            embed.add_field(name="Quorum", value=quorum_status, inline=True)
-            embed.add_field(name="Current Results", value=f"🔨 {ban_votes} vs 🛡️ {total_votes - ban_votes}", inline=False)
+
+            # Quorum information
+            if total_votes >= quorum:
+                quorum_status = f"Met ({total_votes}/{quorum} required)"
+            else:
+                remaining_for_quorum = quorum - total_votes
+                quorum_status = f"Not met ({total_votes}/{quorum}, need {remaining_for_quorum} more)"
+
+            embed.add_field(name="Quorum Status", value=quorum_status, inline=False)
+            embed.add_field(name="Current Results", value=f"BAN: {ban_votes} | KEEP: {total_votes - ban_votes}", inline=False)
 
             if total_votes > 0:
                 percentage = (ban_votes / total_votes) * 100
                 embed.add_field(name="Percentage", value=f"{percentage:.1f}% voting to ban", inline=False)
 
+            embed.add_field(name="Requirements", value=f"At least {quorum} members must vote for the vote to count", inline=False)
             embed.add_field(name="Anonymous Voting", value="Your vote is completely anonymous. Press the buttons below to cast your vote.", inline=False)
             embed.set_footer(text=f"Vote ID: {vote_id}")
 
@@ -295,22 +332,10 @@ class Voteban(commands.Cog):
         except Exception as e:
             print(f"Error updating vote message: {e}")
 
-    @app_commands.command(name='voteban', description='Start a public vote to ban a user with a reason')
-    @app_commands.describe(
-        target='The user to start a ban vote against',
-        reason='The reason for proposing the ban (will be displayed publicly)'
-    )
-    async def voteban_slash(self, interaction: discord.Interaction, target: discord.Member, reason: str):
-        """Start a public vote to ban a user using slash command"""
-        # Validate reason length
-        if len(reason) < 10:
-            await interaction.response.send_message("Please provide a detailed reason (at least 10 characters).", ephemeral=True)
-            return
-
-        if len(reason) > 500:
-            await interaction.response.send_message("Reason is too long. Please keep it under 500 characters.", ephemeral=True)
-            return
-
+    @app_commands.command(name='voteban', description='Start an anonymous vote to ban a user')
+    @app_commands.describe(target='The user to start a ban vote against')
+    async def voteban_slash(self, interaction: discord.Interaction, target: discord.Member):
+        """Start an anonymous vote to ban a user using slash command"""
         # Defer the response since we need to do async operations
         await interaction.response.defer()
 
@@ -342,7 +367,7 @@ class Voteban(commands.Cog):
                     await interaction.followup.send("There is already an active ban vote for this user.")
                     return
 
-            # Create new vote
+            # Create new vote - FIXED CONFIG ISSUE
             counter = await self.config.vote_counter()
             vote_id = str(counter)
             await self.config.vote_counter.set(counter + 1)
@@ -352,8 +377,6 @@ class Voteban(commands.Cog):
                 'channel_id': interaction.channel.id,
                 'target_id': target.id,
                 'starter_id': interaction.user.id,
-                'starter_name': interaction.user.display_name,
-                'reason': reason,
                 'start_time': datetime.now().isoformat(),
                 'votes': {str(interaction.user.id): 'ban'},  # Starter automatically votes to ban
                 'message_id': None  # Will be set after sending the message
@@ -366,23 +389,26 @@ class Voteban(commands.Cog):
             cooldown_end = (datetime.now() + timedelta(days=180)).isoformat()
             cooldowns[str(interaction.user.id)] = cooldown_end
 
-        # Calculate quorum for display
-        human_members = len([m for m in interaction.guild.members if not m.bot])
-        required_votes = max(1, int(human_members / 3))
+        # Calculate vote end time for Discord timestamp
+        start_time = datetime.now()
+        end_time = start_time + timedelta(hours=24)
+        unix_end_time = int(end_time.timestamp())
+
+        # Calculate quorum
+        quorum = await self.calculate_quorum(interaction.guild)
 
         # Create and send the embed with buttons
         embed = discord.Embed(
-            title="🗳️ Ban Vote Started",
+            title="Ban Vote Started",
             description=f"Vote to ban {target.mention} from the server",
             color=0xFF4500
         )
 
-        embed.add_field(name="Started By", value=f"{interaction.user.display_name}", inline=False)
-        embed.add_field(name="Reason", value=reason, inline=False)
-        embed.add_field(name="Time Remaining", value="24h", inline=True)
+        embed.add_field(name="Time Remaining", value=f"<t:{unix_end_time}:R>", inline=True)
         embed.add_field(name="Total Votes", value="1", inline=True)
-        embed.add_field(name="Quorum Required", value=f"{required_votes} votes needed (1/3 of {human_members} members)", inline=False)
-        embed.add_field(name="Current Results", value="🔨 1 vs 🛡️ 0", inline=False)
+        embed.add_field(name="Quorum Status", value=f"Not met (1/{quorum} required, need {quorum-1} more)", inline=False)
+        embed.add_field(name="Current Results", value="BAN: 1 | KEEP: 0", inline=False)
+        embed.add_field(name="Requirements", value=f"At least {quorum} members (1/3 of server) must vote for the vote to count", inline=False)
         embed.add_field(name="Anonymous Voting", value="Your vote is completely anonymous. Use the buttons below to cast your vote.", inline=False)
         embed.set_footer(text=f"Vote ID: {vote_id}")
 
@@ -407,46 +433,47 @@ class Voteban(commands.Cog):
 
                 vote_data = votes[vote_id]
                 start_time = datetime.fromisoformat(vote_data['start_time'])
-                remaining = timedelta(hours=24) - (datetime.now() - start_time)
-
-                if remaining.total_seconds() <= 0:
-                    remaining_str = "Voting has ended"
-                else:
-                    hours = int(remaining.total_seconds() // 3600)
-                    minutes = int((remaining.total_seconds() % 3600) // 60)
-                    remaining_str = f"{hours}h {minutes}m remaining"
+                end_time = start_time + timedelta(hours=24)
+                unix_end_time = int(end_time.timestamp())
 
                 total_votes = len(vote_data['votes'])
                 ban_votes = sum(1 for v in vote_data['votes'].values() if v == 'ban')
 
-                # Calculate quorum status
-                guild = self.bot.get_guild(vote_data['guild_id'])
-                human_members = len([m for m in guild.members if not m.bot])
-                required_votes = max(1, int(human_members / 3))
-                quorum_status = f"{total_votes}/{required_votes} votes needed"
+                # Calculate quorum
+                quorum = await self.calculate_quorum(interaction.guild)
 
                 embed = discord.Embed(
-                    title="📊 Vote Status",
+                    title="Vote Status",
                     description=f"Status for vote {vote_id}",
                     color=0x00BFFF
                 )
 
                 embed.add_field(name="Target", value=f"<@{vote_data['target_id']}>", inline=False)
-                embed.add_field(name="Starter", value=f"{vote_data['starter_name']}", inline=True)
-                embed.add_field(name="Reason", value=vote_data['reason'], inline=True)
-                embed.add_field(name="Time Remaining", value=remaining_str, inline=True)
+                embed.add_field(name="Time Remaining", value=f"<t:{unix_end_time}:R>", inline=True)
                 embed.add_field(name="Total Votes", value=str(total_votes), inline=True)
-                embed.add_field(name="Quorum Status", value=quorum_status, inline=True)
-                embed.add_field(name="Vote Breakdown", value=f"🔨 Ban: {ban_votes}\n🛡️ Keep: {total_votes - ban_votes}", inline=False)
+
+                # Quorum information
+                if total_votes >= quorum:
+                    quorum_status = f"Met ({total_votes}/{quorum} required)"
+                else:
+                    remaining_for_quorum = quorum - total_votes
+                    quorum_status = f"Not met ({total_votes}/{quorum} required, {remaining_for_quorum} more needed)"
+
+                embed.add_field(name="Quorum Status", value=quorum_status, inline=False)
+                embed.add_field(name="Vote Breakdown", value=f"BAN: {ban_votes} | KEEP: {total_votes - ban_votes}", inline=False)
 
                 if total_votes > 0:
                     percentage = (ban_votes / total_votes) * 100
                     embed.add_field(name="Current Percentage", value=f"{percentage:.1f}% voting to ban", inline=False)
 
+                embed.add_field(name="Requirements", value=f"At least {quorum} members must vote for the vote to count", inline=False)
+
                 await interaction.followup.send(embed=embed)
             else:
                 # Show all active votes for this server
                 server_votes = []
+                quorum = await self.calculate_quorum(interaction.guild)
+
                 for vid, vdata in votes.items():
                     if vdata['guild_id'] == interaction.guild.id:
                         guild = self.bot.get_guild(vdata['guild_id'])
@@ -454,29 +481,28 @@ class Voteban(commands.Cog):
                         target_name = target.display_name if target else "Unknown User"
 
                         start_time = datetime.fromisoformat(vdata['start_time'])
-                        remaining = timedelta(hours=24) - (datetime.now() - start_time)
-
-                        if remaining.total_seconds() <= 0:
-                            remaining_str = "Voting has ended"
-                        else:
-                            hours = int(remaining.total_seconds() // 3600)
-                            minutes = int((remaining.total_seconds() % 3600) // 60)
-                            remaining_str = f"{hours}h {minutes}m"
+                        end_time = start_time + timedelta(hours=24)
+                        unix_end_time = int(end_time.timestamp())
 
                         total_votes = len(vdata['votes'])
                         ban_votes = sum(1 for v in vdata['votes'].values() if v == 'ban')
 
-                        # Get quorum status
-                        human_members = len([m for m in guild.members if not m.bot])
-                        required_votes = max(1, int(human_members / 3))
-                        quorum_status = f"{total_votes}/{required_votes} votes"
+                        # Quorum status
+                        if total_votes >= quorum:
+                            quorum_status = "Quorum met"
+                        else:
+                            quorum_status = f"Need {quorum - total_votes} more votes"
 
-                        server_votes.append(f"**Vote {vid}:** {target_name}\n🔨 {ban_votes} vs 🛡️ {total_votes - ban_votes} ({remaining_str})\nQuorum: {quorum_status}\nBy: {vdata['starter_name']} - {vdata['reason']}")
+                        server_votes.append(
+                            f"**Vote {vid}:** {target_name}\n"
+                            f"Votes: {ban_votes} ban vs {total_votes - ban_votes} keep\n"
+                            f"Time: <t:{unix_end_time}:R> | {quorum_status}\n"
+                        )
 
                 if server_votes:
-                    for page in pagify("\n\n".join(server_votes), chars=2000):
+                    for page in pagify("\n\n".join(server_votes)):
                         embed = discord.Embed(
-                            title="📊 Active Ban Votes",
+                            title="Active Ban Votes",
                             description=page,
                             color=0x00BFFF
                         )
@@ -490,27 +516,10 @@ class Voteban(commands.Cog):
     async def votebanclear_slash(self, interaction: discord.Interaction, vote_id: str = None):
         """Clear an active ban vote or all votes (Admin only) using slash command"""
         async with self.config.active_votes() as votes:
-            cleared_votes = []
-
             if vote_id:
                 if vote_id in votes:
                     # Disable the buttons on the original message
                     vote_data = votes[vote_id]
-                    cleared_votes.append(vote_id)
-
-                    # Check if vote failed due to quorum to potentially remove cooldown
-                    guild = interaction.guild
-                    if guild:
-                        human_members = len([m for m in guild.members if not m.bot])
-                        required_votes = max(1, int(human_members / 3))
-                        actual_votes = len(vote_data['votes'])
-
-                        # If quorum likely not met, remove starter's cooldown
-                        if actual_votes < required_votes:
-                            async with self.config.cooldowns() as cooldowns:
-                                if str(vote_data['starter_id']) in cooldowns:
-                                    del cooldowns[str(vote_data['starter_id'])]
-
                     try:
                         channel = interaction.guild.get_channel(vote_data['channel_id'])
                         if channel and 'message_id' in vote_data:
@@ -523,30 +532,15 @@ class Voteban(commands.Cog):
                         print(f"Error disabling vote buttons: {e}")
 
                     del votes[vote_id]
+                    await interaction.response.send_message(f"Vote {vote_id} has been cleared.")
                 else:
                     await interaction.response.send_message("Invalid vote ID.")
-                    return
             else:
                 # Clear all votes for this server
                 to_remove = []
                 for vid, vdata in votes.items():
                     if vdata['guild_id'] == interaction.guild.id:
                         to_remove.append(vid)
-                        cleared_votes.append(vid)
-
-                        # Check if vote failed due to quorum to potentially remove cooldown
-                        guild = interaction.guild
-                        if guild:
-                            human_members = len([m for m in guild.members if not m.bot])
-                            required_votes = max(1, int(human_members / 3))
-                            actual_votes = len(vdata['votes'])
-
-                            # If quorum likely not met, remove starter's cooldown
-                            if actual_votes < required_votes:
-                                async with self.config.cooldowns() as cooldowns:
-                                    if str(vdata['starter_id']) in cooldowns:
-                                        del cooldowns[str(vdata['starter_id'])]
-
                         # Disable the buttons on the original messages
                         try:
                             channel = interaction.guild.get_channel(vdata['channel_id'])
@@ -562,7 +556,7 @@ class Voteban(commands.Cog):
                 for vid in to_remove:
                     del votes[vid]
 
-            await interaction.response.send_message(f"Cleared {len(cleared_votes)} active vote(s).")
+                await interaction.response.send_message(f"Cleared {len(to_remove)} active votes.")
 
     @app_commands.command(name='votebanimmune', description='Manually grant immunity to a user for 6 months (Admin only)')
     @app_commands.describe(target='The user to grant immunity to')
@@ -574,7 +568,7 @@ class Voteban(commands.Cog):
             immunities[str(target.id)] = immunity_end
 
             embed = discord.Embed(
-                title="🛡️ Immunity Granted",
+                title="Immunity Granted",
                 description=f"{target.mention} has been granted immunity for 6 months.",
                 color=0x00FF00
             )
