@@ -53,8 +53,22 @@ class FAQ(commands.Cog):
                 "title": "Player Heads",
                 "thumbnail": "https://i.imgur.com/bQTyCjW.png",
                 "description": "A player will drop their head when killed by another player. The item displays who the killer is. The head will be from the skin worn at the time of death. This means you can wear skins with unique heads for use in decoration."
+            },
+            "miniblocks": {
+                "title": "Mini-Blocks",
+                "thumbnail": "https://i.imgur.com/c15xzm4.png",
+                "description": "Use a stonecutter to craft certain blocks into mini blocks (heads with textures resembling blocks).\nYou can see all blocks that have a \"mini-block\" variant here:"
             }
         }
+
+    # Autocomplete function
+    async def faq_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        # This filters the keys based on what the user is typing
+        return [
+            app_commands.Choice(name=topic, value=topic)
+            for topic in self.faq_data.keys()
+            if current.lower() in topic.lower()
+        ][:25] # Discord limits autocomplete to 25 items
 
     @app_commands.command(name="faq", description="Get FAQ information about a specific topic")
     @app_commands.describe(topic="The FAQ topic you want information about")
