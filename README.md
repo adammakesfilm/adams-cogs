@@ -19,10 +19,9 @@ Allow users to democratically vote to ban a user from your Discord server. A use
 The user who cast a vote has a 6 month cooldown from being able to start another vote, the user who started the vote is the only user who is not annonomous. 
 
 ### FAQ
-![Static Badge](https://img.shields.io/badge/Cog_Status:-Under_Development-orange?style=flat)
+![Static Badge](https://img.shields.io/badge/Cog_Status:-Not_Made_For_Public_Use-red?style=flat)
 
-This is a FAQ cog that is written to be data based, so that all you have to do is add in your own custom faq embeds and everything else will work just fine. At the moment, it's setup to be used on my own personal server, but if you want to use it for yourself, just fork the repository and modify the `self.faq_data` section. 
-
+This cog is an FAQ cog specifically written for use in my Discord server, it's not really applicable to any other server. You're welcome to take it and rewrite it for your use however. 
 
 ---
 ### Licence
