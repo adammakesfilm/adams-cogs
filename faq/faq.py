@@ -47,11 +47,15 @@ class FAQ(commands.Cog):
                 "thumbnail": "https://i.imgur.com/phxPXzz.png",
                 "description": (
                     "Here are all the crafting changes on the server:\n"
-                    "• Turn slabs and stairs back into blocks\n• Craft 12 trapdoors instead of 3\n"
-                    "• Craft 4 bark blocks instead of 3\n• Craft 8 stair blocks instead of 4\n"
+                    "• Turn slabs and stairs back into blocks\n"
+                    "• Craft 12 trapdoors instead of 3\n"
+                    "• Craft 4 bark blocks instead of 3\n"
+                    "• Craft 8 stair blocks instead of 4\n"
                     "• Craft 4 brick blocks instead of 1\n"
                     "• Craft a dispenser using sticks and string with a dropper\n"
-                    "• You can craft nametags\n"
+                    "• You can craft nametags using a iron nugget and paper\n"
+                    "• Craft coral blocks using coral plants\n"
+                    "• Craft a sponge using yellow dye, slime balls, and a kelp block\n"
                     "• Universal Dyeing ([demo video](https://www.youtube.com/watch?v=lfcwKXhjC9Y&t=610s))\n\n"
                     "All crafting recipes have been unlocked upon logging into the server for the first time, so these are all in your crafting book."
                 )
@@ -79,6 +83,36 @@ class FAQ(commands.Cog):
                 "title": "Miniblocks",
                 "thumbnail": "https://i.imgur.com/CsYUv8G.png",
                 "description": "Use a stonecutter to craft certain blocks into mini blocks (heads with textures resembling blocks).\nYou can see all blocks that have a \"mini-block\" variant here: https://link.me/qcraftminiblocks"
+            },
+            "deepslate": {
+                "title": "Renewable Deepslate",
+                "thumbnail": "https://i.imgur.com/3PnDjtN.png",
+                "description": "Lava and water generate deepslate and cobbled deepslate instead below y0. This means you can create infinite deepslate by building a cobblestone generator below y0."
+            },
+            "custom portals": {
+                "title": "Custom Portals",
+                "thumbnail": "https://i.imgur.com/wXy2uUK.png",
+                "description": "Ignite nether portals of any shape and size you like, or using crying obsidian in the portal frame."
+            },
+            "named items": {
+                "title": "Named Items don't despawn",
+                "thumbnail": "https://i.imgur.com/IGVAVEG.png",
+                "description": "Items when named will not despawn, so it's important that you name your gear so that it doesn't despawn if you die with it. This also means you can name items and use them as decorations without worrying about them despawning."
+            },
+            "dragon drops": {
+                "title": "Dragon Drops",
+                "thumbnail": "https://i.imgur.com/i00YUP7.png",
+                "description": "When the Ender Dragon is killed, it drops both an elytra and an egg. This allows players to obtain elytra without having to find an end city and also allows them to obtain multiple eggs if they want."
+            },
+            "back to blocks": {
+                "title": "Back to Blocks",
+                "thumbnail": "https://i.imgur.com/kcJSf0G.png",
+                "description": "Allows you to craft full blocks from stairs and slabs. This is especially useful for building and storage purposes. You can also use it to turn mini-blocks back into their full block variants."
+            },
+            "master cutter": {
+                "title": "Master Cutter",
+                "thumbnail": "https://i.imgur.com/kcJSf0G.png",
+                "description": "Custom datapack that adds over 500 new recipies to the stonecutter. It also provides some quality-of-life features, such as the possibility to switch between variants of the same block (eg. form polished to base), the ability to cut deepslate and stone into their cobbled forms and/or direct derivatives and so much more! Discover all the new recipes and features by using the stonecutter or by looking at the datapack's project page: https://modrinth.com/project/DuUMFIfX"
             }
         }
 
