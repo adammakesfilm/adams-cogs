@@ -49,8 +49,10 @@ class FAQ(commands.Cog):
                     "Here are all the crafting changes on the server:\n"
                     "• Turn slabs and stairs back into blocks\n• Craft 12 trapdoors instead of 3\n"
                     "• Craft 4 bark blocks instead of 3\n• Craft 8 stair blocks instead of 4\n"
-                    "• Craft 4 brick blocks instead of 1\n• Craft a dispenser using sticks and string with a dropper\n"
-                    "• You can craft nametags\n• Universal Dyeing ([demo video](https://www.youtube.com/watch?v=lfcwKXhjC9Y&t=610s))\n\n"
+                    "• Craft 4 brick blocks instead of 1\n"
+                    "• Craft a dispenser using sticks and string with a dropper\n"
+                    "• You can craft nametags\n"
+                    "• Universal Dyeing ([demo video](https://www.youtube.com/watch?v=lfcwKXhjC9Y&t=610s))\n\n"
                     "All crafting recipes have been unlocked upon logging into the server for the first time, so these are all in your crafting book."
                 )
             },
@@ -111,7 +113,8 @@ class FAQ(commands.Cog):
         embed = discord.Embed(
             title=data["title"], 
             description=data["description"], 
-            color=0x5865F2
+            color=0xFFD74E
+
         )
         if "thumbnail" in data:
             embed.set_thumbnail(url=data["thumbnail"])
