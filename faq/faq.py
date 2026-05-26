@@ -111,7 +111,7 @@ class FAQ(commands.Cog):
             },
             "master cutter": {
                 "title": "Master Cutter",
-                "thumbnail": "https://i.imgur.com/kcJSf0G.png",
+                "thumbnail": "https://i.imgur.com/3oUMPl4.png",
                 "description": "Custom datapack that adds over 500 new recipies to the stonecutter. It also provides some quality-of-life features, such as the possibility to switch between variants of the same block (eg. form polished to base), the ability to cut deepslate and stone into their cobbled forms and/or direct derivatives and so much more! Discover all the new recipes and features by using the stonecutter or by looking at the datapack's project page: https://modrinth.com/project/DuUMFIfX"
             }
         }
