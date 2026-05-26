@@ -12,27 +12,27 @@ class FAQ(commands.Cog):
         self.faq_data = {
             "armorstand": {
                 "title": "Armor Statues",
-                "thumbnail": "https://i.imgur.com/placeholder-armorstand.png",
-                "description": "To obtain the armor statues book, sign a book and quill with the title `Statues`. You can run the in-game command `/trigger as_help` for more info. Here is an in-depth beginner tutorial on how to use the Armor Statues book from ZombieCleo: https://youtu.be/nV9-_RacnoI\n\nYou can also use [Armorposer](https://modrinth.com/mod/armor-poser) for a GUI by shift-clicking on an armor stand."
+                "thumbnail": "https://i.imgur.com/8UpGiwA.png",
+                "description": "To obtain the armor statues book, sign a book and quill with the title `Statues`. You can run the in-game command `/trigger as_help` for more info. Here is an in-depth beginner tutorial on how to use the Armor Statues book from ZombieCleo: https://youtu.be/nV9-_RacnoI\n\nYou can also use [Armorposer](https://modrinth.com/mod/armor-poser) mod for a GUI by shift-clicking on an armor stand."
             },
             "mobheads": {
                 "title": "Mob Heads",
-                "thumbnail": "https://i.imgur.com/placeholder-mobheads.png",
-                "description": "Each mob has a chance of dropping its head. You can see all the drop rates here: https://bit.ly/qcraftmobs\n\nThe heads will also make the appropriate mob's sound when placed on top of a powered note block."
+                "thumbnail": "https://i.imgur.com/CsYUv8G.png",
+                "description": "Each mob has a chance of dropping its head. You can see all the drop rates here: https://link.me/qcraftmobs\n\nThe heads will also make the appropriate mob's sound when placed on top of a powered note block."
             },
             "hud": {
                 "title": "HUD Display",
-                "thumbnail": "https://i.imgur.com/placeholder-hud.png",
+                "thumbnail": "https://i.imgur.com/XBhpZmz.png",
                 "description": "Adds your XYZ Coords and a 24hr clock to your actionbar. To toggle it on and off use `/trigger ch_toggle`."
             },
             "duraping": {
                 "title": "DuraPing",
-                "thumbnail": "https://i.imgur.com/placeholder-duraping.png",
+                "thumbnail": "https://i.imgur.com/VGfXFBo.png",
                 "description": "Get notified when you damage an item with 10% or less durability. You can customize what items it works for and how it notifies you using `/trigger duraPing`."
             },
             "playerme": {
                 "title": "PlayerMe",
-                "thumbnail": "https://i.imgur.com/placeholder-playerme.png",
+                "thumbnail": "https://i.imgur.com/IGVAVEG.png",
                 "description": (
                     "A server-side AFK clicker that also allows you to AFK on the server without being on your PC.\n\n"
                     "**Commands:**\n"
@@ -44,7 +44,7 @@ class FAQ(commands.Cog):
             },
             "craft tweaks": {
                 "title": "Craft Tweaks",
-                "thumbnail": "https://i.imgur.com/placeholder-crafttweaks.png",
+                "thumbnail": "https://i.imgur.com/phxPXzz.png",
                 "description": (
                     "Here are all the crafting changes on the server:\n"
                     "• Turn slabs and stairs back into blocks\n• Craft 12 trapdoors instead of 3\n"
@@ -56,7 +56,7 @@ class FAQ(commands.Cog):
             },
             "spectator": {
                 "title": "Spectator Mode",
-                "thumbnail": "https://i.imgur.com/placeholder-spectator.png",
+                "thumbnail": "https://i.imgur.com/ueyPL1x.png",
                 "description": (
                     "Enter spectator mode whenever you'd like using the command `/cs`. Fly around as much as you'd like and use `/cs` again to return to survival mode.\n\n"
                     "To enable night vision, run `/trigger night_vision`. This effect will go away when you return to survival.\n\n"
@@ -65,13 +65,18 @@ class FAQ(commands.Cog):
             },
             "flipping cactus": {
                 "title": "Flipping Cactus",
-                "thumbnail": "https://i.imgur.com/placeholder-flippingcactus.png",
+                "thumbnail": "https://i.imgur.com/YAB3ldn.png",
                 "description": "Players can flip and rotate blocks by right clicking on a block with a cactus. Doesn't cause block updates when rotated/flipped.\n\nApplies to pistons, observers, droppers, repeaters, stairs, glazed terracotta etc..."
             },
             "playerhead": {
                 "title": "Player Heads",
-                "thumbnail": "https://i.imgur.com/placeholder-playerhead.png",
+                "thumbnail": "https://i.imgur.com/bQTyCjW.png",
                 "description": "A player will drop their head when killed by another player. The item displays who the killer is. The head will be from the skin worn at the time of death. This means you can wear skins with unique heads for use in decoration."
+            },
+            "miniblocks": {
+                "title": "Miniblocks",
+                "thumbnail": "https://i.imgur.com/CsYUv8G.png",
+                "description": "Use a stonecutter to craft certain blocks into mini blocks (heads with textures resembling blocks).\nYou can see all blocks that have a \"mini-block\" variant here: https://link.me/qcraftminiblocks"
             }
         }
 
