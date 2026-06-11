@@ -8,30 +8,30 @@ from discord.ui import View, Button, button
 import math
 
 class VotebanView(View):
-    """Button view for anonymous voting"""
+    """Button view for anonymous voting with persistent voting"""
 
     def __init__(self, vote_id, cog):
         super().__init__(timeout=None)
         self.vote_id = vote_id
         self.cog = cog
 
-    @button(label='Vote to Ban', style=discord.ButtonStyle.danger, emoji='🔨')
+    @button(label='Vote to Ban', style=discord.ButtonStyle.danger, emoji='🔨', custom_id=f'voteban_ban_{vote_id}')
     async def ban_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Handle ban vote button"""
         await self.cog.handle_vote_button(interaction, self.vote_id, 'ban')
 
-    @button(label='Vote to Keep', style=discord.ButtonStyle.success, emoji='🛡️')
+    @button(label='Vote to Keep', style=discord.ButtonStyle.success, emoji='🛡️', custom_id=f'voteban_keep_{vote_id}')
     async def keep_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Handle keep vote button"""
         await self.cog.handle_vote_button(interaction, self.vote_id, 'keep')
 
-    @button(label='Check Status', style=discord.ButtonStyle.secondary, emoji='📊')
+    @button(label='Check Status', style=discord.ButtonStyle.secondary, emoji='📊', custom_id=f'voteban_status_{vote_id}')
     async def status_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Handle status check button"""
         await self.cog.handle_status_button(interaction, self.vote_id)
 
 class Voteban(commands.Cog):
-    """Anonymous voting system to ban users with slash commands and buttons"""
+    """Anonymous voting system to ban users with slash commands and persistent buttons"""
 
     def __init__(self, bot):
         self.bot = bot
@@ -51,8 +51,35 @@ class Voteban(commands.Cog):
 
         self.vote_check_task = self.bot.loop.create_task(self.check_votes())
 
+    async def cog_load(self):
+        """Called when the cog is loaded - register persistent views"""
+        # Wait for bot to be ready before registering views
+        await self.bot.wait_until_ready()
+        async with self.config.active_votes() as votes:
+            for vote_id in votes.keys():
+                try:
+                    view = VotebanView(vote_id, self)
+                    self.bot.add_view(view)
+                except Exception as e:
+                    print(f"Error registering view for vote {vote_id}: {e}")
+
     def cog_unload(self):
+        """Called when the cog is unloaded - cleanup tasks"""
         self.vote_check_task.cancel()
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        """Register persistent views when bot is ready"""
+        # Re-register all active vote views on bot restart
+        await self.bot.wait_until_ready()
+        async with self.config.active_votes() as votes:
+            for vote_id in votes.keys():
+                try:
+                    view = VotebanView(vote_id, self)
+                    self.bot.add_view(view)
+                    print(f"Registered persistent view for vote {vote_id}")
+                except Exception as e:
+                    print(f"Error registering view for vote {vote_id}: {e}")
 
     async def check_votes(self):
         """Background task to check for completed votes"""
@@ -336,21 +363,16 @@ class Voteban(commands.Cog):
     @app_commands.describe(target='The user to start a ban vote against')
     async def voteban_slash(self, interaction: discord.Interaction, target: discord.Member):
         """Start an anonymous vote to ban a user using slash command"""
-        
-        # NEW: Check if target is server owner
+
+        # Check if target is server owner
         if target == interaction.guild.owner:
             await interaction.response.defer()
             await interaction.followup.send("You cannot start a ban vote against the server owner.")
             return
 
-        # Check if target has Administrator permission
-        if target.guild_permissions.administrator:
-            await interaction.followup.send("You cannot start a ban vote against users with Administrator permissions.")
-            return
-        
         # Defer the response since we need to do async operations
         await interaction.response.defer()
-        
+
         # Check if user is on cooldown
         async with self.config.cooldowns() as cooldowns:
             if str(interaction.user.id) in cooldowns:
@@ -426,6 +448,9 @@ class Voteban(commands.Cog):
 
         view = VotebanView(vote_id, self)
         message = await interaction.followup.send(embed=embed, view=view)
+
+        # Register the view for persistence
+        self.bot.add_view(view)
 
         # Store the message ID for updating
         async with self.config.active_votes() as votes:
