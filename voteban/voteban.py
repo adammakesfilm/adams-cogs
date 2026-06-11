@@ -336,9 +336,21 @@ class Voteban(commands.Cog):
     @app_commands.describe(target='The user to start a ban vote against')
     async def voteban_slash(self, interaction: discord.Interaction, target: discord.Member):
         """Start an anonymous vote to ban a user using slash command"""
+        
+        # NEW: Check if target is server owner
+        if target == interaction.guild.owner:
+            await interaction.response.defer()
+            await interaction.followup.send("You cannot start a ban vote against the server owner.")
+            return
+
+        # Check if target has Administrator permission
+        if target.guild_permissions.administrator:
+            await interaction.followup.send("You cannot start a ban vote against users with Administrator permissions.")
+            return
+        
         # Defer the response since we need to do async operations
         await interaction.response.defer()
-
+        
         # Check if user is on cooldown
         async with self.config.cooldowns() as cooldowns:
             if str(interaction.user.id) in cooldowns:
