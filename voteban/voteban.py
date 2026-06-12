@@ -361,7 +361,7 @@ class Voteban(commands.Cog):
 
     @app_commands.command(name='voteban', description='Start an anonymous vote to ban a user')
     @app_commands.describe(target='The user to start a ban vote against')
-    async def voteban_slash(self, interaction: discord.Interaction, target: discord.Member):
+    async def voteban_slash(self, interaction, target: discord.Member, reason: str):
         """Start an anonymous vote to ban a user using slash command"""
 
         # Check if target is server owner
@@ -459,8 +459,8 @@ class Voteban(commands.Cog):
 
 @app_commands.command(name='votestatus', description='Check the status of a ban vote')
 @app_commands.describe(vote_id='The vote ID to check')
-async def votestatus_slash(self, interaction: discord.Interaction, vote_id: str = None):
-    await interaction.response.defer()
+async def votestatus_slash(self, interaction, vote_id: str = None):
+    await interaction.response.defer(ephemeral=True)
 
     async with self.config.active_votes() as votes:
         if vote_id:
@@ -502,7 +502,7 @@ async def votestatus_slash(self, interaction: discord.Interaction, vote_id: str 
     @app_commands.command(name='votebanclear', description='Clear an active ban vote or all votes (Admin only)')
     @app_commands.describe(vote_id='The vote ID to clear (optional, leave empty to clear all votes)')
     @checks.admin_or_permissions(administrator=True)
-    async def votebanclear_slash(self, interaction: discord.Interaction, vote_id: str = None):
+    async def votebanclear_slash(self, interaction, vote_id: str = None):
         """Clear an active ban vote or all votes (Admin only) using slash command"""
         async with self.config.active_votes() as votes:
             if vote_id:
@@ -550,7 +550,7 @@ async def votestatus_slash(self, interaction: discord.Interaction, vote_id: str 
     @app_commands.command(name='votebanimmune', description='Manually grant immunity to a user for 6 months (Admin only)')
     @app_commands.describe(target='The user to grant immunity to')
     @checks.admin_or_permissions(administrator=True)
-    async def votebanimmune_slash(self, interaction: discord.Interaction, target: discord.Member):
+    async def votebanimmune_slash(self, interaction, target: discord.Member):
         """Manually grant immunity to a user (Admin only) using slash command"""
         async with self.config.immunities() as immunities:
             immunity_end = (datetime.now() + timedelta(days=180)).isoformat()
