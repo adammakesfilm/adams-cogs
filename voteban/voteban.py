@@ -6,7 +6,6 @@ import asyncio
 from discord import app_commands
 from discord.ui import View, Button, button
 import math
-
 class VotebanView(View):
     """Button view for anonymous voting with persistent voting"""
 
@@ -15,29 +14,21 @@ class VotebanView(View):
         self.vote_id = vote_id
         self.cog = cog
 
-        # Set custom IDs dynamically in __init__
-        for child in self.children:
-            if isinstance(child, discord.ui.Button):
-                if child.label == 'Vote to Ban':
-                    child.custom_id = f'voteban_ban_{vote_id}'
-                elif child.label == 'Vote to Keep':
-                    child.custom_id = f'voteban_keep_{vote_id}'
-                elif child.label == 'Check Status':
-                    child.custom_id = f'voteban_status_{vote_id}'
+        # Set custom IDs dynamically here
+        self.ban_button.custom_id = f'voteban_ban_{vote_id}'
+        self.keep_button.custom_id = f'voteban_keep_{vote_id}'
+        self.status_button.custom_id = f'voteban_status_{vote_id}'
 
     @button(label='Vote to Ban', style=discord.ButtonStyle.danger, emoji='🔨')
     async def ban_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Handle ban vote button"""
         await self.cog.handle_vote_button(interaction, self.vote_id, 'ban')
 
     @button(label='Vote to Keep', style=discord.ButtonStyle.success, emoji='🛡️')
     async def keep_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Handle keep vote button"""
         await self.cog.handle_vote_button(interaction, self.vote_id, 'keep')
 
     @button(label='Check Status', style=discord.ButtonStyle.secondary, emoji='📊')
     async def status_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Handle status check button"""
         await self.cog.handle_status_button(interaction, self.vote_id)
 
 class Voteban(commands.Cog):
@@ -420,9 +411,10 @@ class Voteban(commands.Cog):
                 'channel_id': interaction.channel.id,
                 'target_id': target.id,
                 'starter_id': interaction.user.id,
+                'reason': reason,  # Save the reason
                 'start_time': datetime.now().isoformat(),
-                'votes': {str(interaction.user.id): 'ban'},  # Starter automatically votes to ban
-                'message_id': None  # Will be set after sending the message
+                'votes': {str(interaction.user.id): 'ban'},
+                'message_id': None
             }
 
             votes[vote_id] = vote_data
@@ -465,96 +457,47 @@ class Voteban(commands.Cog):
         async with self.config.active_votes() as votes:
             votes[vote_id]['message_id'] = message.id
 
-    @app_commands.command(name='votestatus', description='Check the status of a ban vote')
-    @app_commands.describe(vote_id='The vote ID to check (optional, leave empty for all active votes)')
-    async def votestatus_slash(self, interaction: discord.Interaction, vote_id: str = None):
-        """Check the status of a ban vote using slash command"""
-        await interaction.response.defer()
+@app_commands.command(name='votestatus', description='Check the status of a ban vote')
+@app_commands.describe(vote_id='The vote ID to check')
+async def votestatus_slash(self, interaction: discord.Interaction, vote_id: str = None):
+    await interaction.response.defer()
 
-        async with self.config.active_votes() as votes:
-            if vote_id:
-                if vote_id not in votes:
-                    await interaction.followup.send("Invalid vote ID or the vote has ended.")
-                    return
+    async with self.config.active_votes() as votes:
+        if vote_id:
+            if vote_id not in votes:
+                await interaction.followup.send("Invalid vote ID.")
+                return
 
-                vote_data = votes[vote_id]
-                start_time = datetime.fromisoformat(vote_data['start_time'])
-                end_time = start_time + timedelta(hours=24)
-                unix_end_time = int(end_time.timestamp())
+            vote_data = votes[vote_id]
+            start_time = datetime.fromisoformat(vote_data['start_time'])
+            end_time = start_time + timedelta(hours=24)
+            unix_end_time = int(end_time.timestamp())
+            total_votes = len(vote_data['votes'])
+            ban_votes = sum(1 for v in vote_data['votes'].values() if v == 'ban')
+            quorum = await self.calculate_quorum(interaction.guild)
 
-                total_votes = len(vote_data['votes'])
-                ban_votes = sum(1 for v in vote_data['votes'].values() if v == 'ban')
+            # Re-styled embed to match your image
+            embed = discord.Embed(title="📊 Vote Status", color=0x00BFFF)
+            embed.description = f"Status for vote {vote_id}"
+            embed.add_field(name="Target", value=f"<@{vote_data['target_id']}>", inline=False)
 
-                # Calculate quorum
-                quorum = await self.calculate_quorum(interaction.guild)
+            starter = interaction.guild.get_member(vote_data['starter_id'])
+            embed.add_field(name="Starter", value=starter.display_name if starter else "Unknown", inline=True)
+            embed.add_field(name="Reason", value=vote_data.get('reason', 'No reason provided'), inline=True)
+            embed.add_field(name="Time Remaining", value=f"<t:{unix_end_time}:R>", inline=True)
 
-                embed = discord.Embed(
-                    title="Vote Status",
-                    description=f"Status for vote {vote_id}",
-                    color=0x00BFFF
-                )
+            embed.add_field(name="Total Votes", value=str(total_votes), inline=True)
+            embed.add_field(name="Quorum Status", value=f"{total_votes}/{quorum} votes needed", inline=True)
 
-                embed.add_field(name="Target", value=f"<@{vote_data['target_id']}>", inline=False)
-                embed.add_field(name="Time Remaining", value=f"<t:{unix_end_time}:R>", inline=True)
-                embed.add_field(name="Total Votes", value=str(total_votes), inline=True)
+            embed.add_field(name="Vote Breakdown", value=f"🔨 Ban: {ban_votes}\n🛡️ Keep: {total_votes - ban_votes}", inline=False)
 
-                # Quorum information
-                if total_votes >= quorum:
-                    quorum_status = f"Met ({total_votes}/{quorum} required)"
-                else:
-                    remaining_for_quorum = quorum - total_votes
-                    quorum_status = f"Not met ({total_votes}/{quorum} required, {remaining_for_quorum} more needed)"
+            if total_votes > 0:
+                percentage = (ban_votes / total_votes) * 100
+                embed.add_field(name="Current Percentage", value=f"{percentage:.1f}% voting to ban", inline=False)
 
-                embed.add_field(name="Quorum Status", value=quorum_status, inline=False)
-                embed.add_field(name="Vote Breakdown", value=f"BAN: {ban_votes} | KEEP: {total_votes - ban_votes}", inline=False)
-
-                if total_votes > 0:
-                    percentage = (ban_votes / total_votes) * 100
-                    embed.add_field(name="Current Percentage", value=f"{percentage:.1f}% voting to ban", inline=False)
-
-                embed.add_field(name="Requirements", value=f"At least {quorum} members must vote for the vote to count", inline=False)
-
-                await interaction.followup.send(embed=embed)
-            else:
-                # Show all active votes for this server
-                server_votes = []
-                quorum = await self.calculate_quorum(interaction.guild)
-
-                for vid, vdata in votes.items():
-                    if vdata['guild_id'] == interaction.guild.id:
-                        guild = self.bot.get_guild(vdata['guild_id'])
-                        target = guild.get_member(vdata['target_id']) if guild else None
-                        target_name = target.display_name if target else "Unknown User"
-
-                        start_time = datetime.fromisoformat(vdata['start_time'])
-                        end_time = start_time + timedelta(hours=24)
-                        unix_end_time = int(end_time.timestamp())
-
-                        total_votes = len(vdata['votes'])
-                        ban_votes = sum(1 for v in vdata['votes'].values() if v == 'ban')
-
-                        # Quorum status
-                        if total_votes >= quorum:
-                            quorum_status = "Quorum met"
-                        else:
-                            quorum_status = f"Need {quorum - total_votes} more votes"
-
-                        server_votes.append(
-                            f"**Vote {vid}:** {target_name}\n"
-                            f"Votes: {ban_votes} ban vs {total_votes - ban_votes} keep\n"
-                            f"Time: <t:{unix_end_time}:R> | {quorum_status}\n"
-                        )
-
-                if server_votes:
-                    for page in pagify("\n\n".join(server_votes)):
-                        embed = discord.Embed(
-                            title="Active Ban Votes",
-                            description=page,
-                            color=0x00BFFF
-                        )
-                        await interaction.followup.send(embed=embed)
-                else:
-                    await interaction.followup.send("No active ban votes in this server.")
+            await interaction.followup.send(embed=embed)
+        else:
+            await interaction.followup.send("No active ban votes in this server.")
 
     @app_commands.command(name='votebanclear', description='Clear an active ban vote or all votes (Admin only)')
     @app_commands.describe(vote_id='The vote ID to clear (optional, leave empty to clear all votes)')
@@ -620,4 +563,3 @@ class Voteban(commands.Cog):
             )
 
             await interaction.response.send_message(embed=embed)
-            
