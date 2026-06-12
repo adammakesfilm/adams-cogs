@@ -459,7 +459,7 @@ class Voteban(commands.Cog):
 
 @app_commands.command(name='votestatus', description='Check the status of a ban vote')
 @app_commands.describe(vote_id='The vote ID to check')
-async def votestatus_slash(self, interaction, vote_id: str = None):
+async def votestatus_slash(self, interaction: "discord.Interaction", vote_id: str = None):
     await interaction.response.defer(ephemeral=True)
 
     async with self.config.active_votes() as votes:
