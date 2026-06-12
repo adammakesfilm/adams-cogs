@@ -6,6 +6,7 @@ import asyncio
 from discord import app_commands
 from discord.ui import View, Button, button
 import math
+
 class VotebanView(View):
     """Button view for anonymous voting with persistent voting"""
 
@@ -13,11 +14,6 @@ class VotebanView(View):
         super().__init__(timeout=None)
         self.vote_id = vote_id
         self.cog = cog
-
-        # Set custom IDs dynamically here
-        self.ban_button.custom_id = f'voteban_ban_{vote_id}'
-        self.keep_button.custom_id = f'voteban_keep_{vote_id}'
-        self.status_button.custom_id = f'voteban_status_{vote_id}'
 
     @button(label='Vote to Ban', style=discord.ButtonStyle.danger, emoji='🔨')
     async def ban_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -31,13 +27,14 @@ class VotebanView(View):
     async def status_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.cog.handle_status_button(interaction, self.vote_id)
 
+
 class Voteban(commands.Cog):
     """Anonymous voting system to ban users with slash commands and persistent buttons"""
 
     def __init__(self, bot):
         self.bot = bot
         self.config = Config.get_conf(
-            self, 
+            self,
             identifier=1234567890,  # Unique identifier for your cog
             force_registration=True
         )
@@ -59,8 +56,7 @@ class Voteban(commands.Cog):
         async with self.config.active_votes() as votes:
             for vote_id in votes.keys():
                 try:
-                    view = VotebanView(vote_id, self)
-                    self.bot.add_view(view)
+                    self.bot.add_view(VotebanView(vote_id, self))
                 except Exception as e:
                     print(f"Error registering view for vote {vote_id}: {e}")
 
@@ -76,8 +72,7 @@ class Voteban(commands.Cog):
         async with self.config.active_votes() as votes:
             for vote_id in votes.keys():
                 try:
-                    view = VotebanView(vote_id, self)
-                    self.bot.add_view(view)
+                    self.bot.add_view(VotebanView(vote_id, self))
                     print(f"Registered persistent view for vote {vote_id}")
                 except Exception as e:
                     print(f"Error registering view for vote {vote_id}: {e}")
@@ -208,7 +203,7 @@ class Voteban(commands.Cog):
             except Exception as e:
                 print(f"Error updating quorum failure message: {e}")
 
-    async def update_vote_completion_message(self, vote_id, vote_data, guild, target, 
+    async def update_vote_completion_message(self, vote_id, vote_data, guild, target,
                                             ban_votes, total_votes, result, color):
         """Update the vote completion message"""
         if 'message_id' in vote_data:
@@ -360,18 +355,32 @@ class Voteban(commands.Cog):
             print(f"Error updating vote message: {e}")
 
     @app_commands.command(name='voteban', description='Start an anonymous vote to ban a user')
-    @app_commands.describe(target='The user to start a ban vote against')
-    async def voteban_slash(self, interaction: "discord.Interaction", target: discord.Member, reason: str):
+    @app_commands.describe(target='The user to start a ban vote against', reason='The reason for the ban vote')
+    @app_commands.guild_only()
+    @staticmethod
+    async def get_voteban_params_slash(interaction: discord.Interaction, target: discord.Member) -> dict:
+        """Get parameters for the voteban command"""
+        return {'interaction': interaction, 'target': target, 'reason': None}
+
+    @commands.hybrid_command(name='voteban', description='Start an anonymous vote to ban a user')
+    @commands.guild_only()
+    async def voteban_lexical(self, ctx: commands.Context, target: discord.Member, *, reason: str = "No reason provided"):
+        """Start an anonymous vote to ban a user using hybrid command"""
+        interaction = await ctx.channel.send("Use the slash command `/voteban` instead.")
+        await interaction.delete()
+        return
+
+    async def voteban_slash(self, interaction: discord.Interaction, target: discord.Member, reason: str = "No reason provided"):
         """Start an anonymous vote to ban a user using slash command"""
 
         # Check if target is server owner
         if target == interaction.guild.owner:
-            await interaction.response.defer()
-            await interaction.followup.send("You cannot start a ban vote against the server owner.")
+            await interaction.response.defer(ephemeral=True)
+            await interaction.followup.send("You cannot start a ban vote against the server owner.", ephemeral=True)
             return
 
         # Defer the response since we need to do async operations
-        await interaction.response.defer()
+        await interaction.response.defer(thinking=True, ephemeral=False)
 
         # Check if user is on cooldown
         async with self.config.cooldowns() as cooldowns:
@@ -381,7 +390,7 @@ class Voteban(commands.Cog):
                     remaining = cooldown_end - datetime.now()
                     days = remaining.days
                     hours = remaining.seconds // 3600
-                    await interaction.followup.send(f"You can start another ban vote in {days} days and {hours} hours.")
+                    await interaction.followup.send(f"You can start another ban vote in {days} days and {hours} hours.", ephemeral=True)
                     return
 
         # Check if target has immunity
@@ -391,17 +400,17 @@ class Voteban(commands.Cog):
                 if datetime.now() < immunity_end:
                     remaining = immunity_end - datetime.now()
                     days = remaining.days
-                    await interaction.followup.send(f"This user has immunity for another {days} days.")
+                    await interaction.followup.send(f"This user has immunity for another {days} days.", ephemeral=True)
                     return
 
         # Check if there's already an active vote for this user in this server
         async with self.config.active_votes() as votes:
             for vote_data in votes.values():
                 if vote_data['guild_id'] == interaction.guild.id and vote_data['target_id'] == target.id:
-                    await interaction.followup.send("There is already an active ban vote for this user.")
+                    await interaction.followup.send("There is already an active ban vote for this user.", ephemeral=True)
                     return
 
-            # Create new vote - FIXED CONFIG ISSUE
+            # Create new vote
             counter = await self.config.vote_counter()
             vote_id = str(counter)
             await self.config.vote_counter.set(counter + 1)
@@ -411,7 +420,7 @@ class Voteban(commands.Cog):
                 'channel_id': interaction.channel.id,
                 'target_id': target.id,
                 'starter_id': interaction.user.id,
-                'reason': reason,  # Save the reason
+                'reason': reason,
                 'start_time': datetime.now().isoformat(),
                 'votes': {str(interaction.user.id): 'ban'},
                 'message_id': None
@@ -445,10 +454,11 @@ class Voteban(commands.Cog):
         embed.add_field(name="Current Results", value="BAN: 1 | KEEP: 0", inline=False)
         embed.add_field(name="Requirements", value=f"At least {quorum} members (1/3 of server) must vote for the vote to count", inline=False)
         embed.add_field(name="Anonymous Voting", value="Your vote is completely anonymous. Use the buttons below to cast your vote.", inline=False)
+        embed.add_field(name="Reason", value=reason, inline=False)
         embed.set_footer(text=f"Vote ID: {vote_id}")
 
         view = VotebanView(vote_id, self)
-        message = await interaction.followup.send(embed=embed, view=view)
+        message = await interaction.followup.send(embed=embed, view=view, ephemeral=False)
 
         # Register the view for persistence
         self.bot.add_view(view)
@@ -457,18 +467,46 @@ class Voteban(commands.Cog):
         async with self.config.active_votes() as votes:
             votes[vote_id]['message_id'] = message.id
 
-@app_commands.command(name='votestatus', description='Check the status of a ban vote')
-@app_commands.describe(vote_id='The vote ID to check')
-async def votestatus_slash(self, interaction: "discord.Interaction", vote_id: str = None):
-    await interaction.response.defer(ephemeral=True)
+    @app_commands.command(name='votestatus', description='Check the status of a ban vote')
+    @app_commands.describe(vote_id='The vote ID to check')
+    @app_commands.guild_only()
+    async def votestatus_slash(self, interaction: discord.Interaction, vote_id: str = None):
+        await interaction.response.defer(ephemeral=True)
 
-    async with self.config.active_votes() as votes:
-        if vote_id:
+        if not vote_id:
+            # Show all active votes for the server
+            async with self.config.active_votes() as votes:
+                server_votes = [(vid, vdata) for vid, vdata in votes.items() if vdata['guild_id'] == interaction.guild.id]
+                if not server_votes:
+                    await interaction.followup.send("No active ban votes in this server.", ephemeral=True)
+                    return
+
+                embed = discord.Embed(title="📊 Active Ban Votes", color=0x00BFFF)
+                for vid, vdata in server_votes:
+                    start_time = datetime.fromisoformat(vdata['start_time'])
+                    end_time = start_time + timedelta(hours=24)
+                    unix_end_time = int(end_time.timestamp())
+                    total_votes = len(vdata['votes'])
+                    ban_votes = sum(1 for v in vdata['votes'].values() if v == 'ban')
+                    target = interaction.guild.get_member(vdata['target_id'])
+                    target_name = target.display_name if target else "Unknown User"
+
+                    embed.add_field(name=f"Vote ID: {vid} - {target_name}", 
+                                   value=f"<t:{unix_end_time}:R> | {ban_votes}🔨 / {total_votes} total", inline=False)
+
+                await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+
+        async with self.config.active_votes() as votes:
             if vote_id not in votes:
-                await interaction.followup.send("Invalid vote ID.")
+                await interaction.followup.send("Invalid vote ID.", ephemeral=True)
                 return
 
             vote_data = votes[vote_id]
+            if vote_data['guild_id'] != interaction.guild.id:
+                await interaction.followup.send("You can only check votes in your server.", ephemeral=True)
+                return
+
             start_time = datetime.fromisoformat(vote_data['start_time'])
             end_time = start_time + timedelta(hours=24)
             unix_end_time = int(end_time.timestamp())
@@ -495,20 +533,25 @@ async def votestatus_slash(self, interaction: "discord.Interaction", vote_id: st
                 percentage = (ban_votes / total_votes) * 100
                 embed.add_field(name="Current Percentage", value=f"{percentage:.1f}% voting to ban", inline=False)
 
-            await interaction.followup.send(embed=embed)
-        else:
-            await interaction.followup.send("No active ban votes in this server.")
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
     @app_commands.command(name='votebanclear', description='Clear an active ban vote or all votes (Admin only)')
     @app_commands.describe(vote_id='The vote ID to clear (optional, leave empty to clear all votes)')
+    @app_commands.guild_only()
     @checks.admin_or_permissions(administrator=True)
-    async def votebanclear_slash(self, interaction: "discord.Interaction", vote_id: str = None):
+    async def votebanclear_slash(self, interaction: discord.Interaction, vote_id: str = None):
         """Clear an active ban vote or all votes (Admin only) using slash command"""
+        await interaction.response.defer(ephemeral=True)
+
         async with self.config.active_votes() as votes:
             if vote_id:
                 if vote_id in votes:
                     # Disable the buttons on the original message
                     vote_data = votes[vote_id]
+                    if vote_data['guild_id'] != interaction.guild.id:
+                        await interaction.followup.send("You can only clear votes in your server.", ephemeral=True)
+                        return
+
                     try:
                         channel = interaction.guild.get_channel(vote_data['channel_id'])
                         if channel and 'message_id' in vote_data:
@@ -521,9 +564,9 @@ async def votestatus_slash(self, interaction: "discord.Interaction", vote_id: st
                         print(f"Error disabling vote buttons: {e}")
 
                     del votes[vote_id]
-                    await interaction.response.send_message(f"Vote {vote_id} has been cleared.")
+                    await interaction.followup.send(f"Vote {vote_id} has been cleared.", ephemeral=True)
                 else:
-                    await interaction.response.send_message("Invalid vote ID.")
+                    await interaction.followup.send("Invalid vote ID.", ephemeral=True)
             else:
                 # Clear all votes for this server
                 to_remove = []
@@ -545,12 +588,13 @@ async def votestatus_slash(self, interaction: "discord.Interaction", vote_id: st
                 for vid in to_remove:
                     del votes[vid]
 
-                await interaction.response.send_message(f"Cleared {len(to_remove)} active votes.")
+                await interaction.followup.send(f"Cleared {len(to_remove)} active votes.", ephemeral=True)
 
     @app_commands.command(name='votebanimmune', description='Manually grant immunity to a user for 6 months (Admin only)')
     @app_commands.describe(target='The user to grant immunity to')
+    @app_commands.guild_only()
     @checks.admin_or_permissions(administrator=True)
-    async def votebanimmune_slash(self, interaction: "discord.Interaction", target: discord.Member):
+    async def votebanimmune_slash(self, interaction: discord.Interaction, target: discord.Member):
         """Manually grant immunity to a user (Admin only) using slash command"""
         async with self.config.immunities() as immunities:
             immunity_end = (datetime.now() + timedelta(days=180)).isoformat()
@@ -562,4 +606,4 @@ async def votestatus_slash(self, interaction: "discord.Interaction", vote_id: st
                 color=0x00FF00
             )
 
-            await interaction.response.send_message(embed=embed)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
