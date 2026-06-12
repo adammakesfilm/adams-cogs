@@ -15,6 +15,11 @@ class VotebanView(View):
         self.vote_id = vote_id
         self.cog = cog
 
+        # Set custom IDs after buttons are created by decorators
+        self.ban_button.custom_id = f'voteban_ban_{vote_id}'
+        self.keep_button.custom_id = f'voteban_keep_{vote_id}'
+        self.status_button.custom_id = f'voteban_status_{vote_id}'
+
     @button(label='Vote to Ban', style=discord.ButtonStyle.danger, emoji='🔨')
     async def ban_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.cog.handle_vote_button(interaction, self.vote_id, 'ban')
@@ -35,23 +40,21 @@ class Voteban(commands.Cog):
         self.bot = bot
         self.config = Config.get_conf(
             self,
-            identifier=1234567890,  # Unique identifier for your cog
+            identifier=1234567890,
             force_registration=True
         )
 
-        # Define config structure
         self.config.register_global(
-            active_votes={},  # {vote_id: {target_id, starter_id, start_time, votes: {user_id: vote}, message_id}}
-            immunities={},    # {user_id: immunity_end_time}
-            cooldowns={},     # {user_id: cooldown_end_time}
-            vote_counter=0    # To generate unique vote IDs
+            active_votes={},
+            immunities={},
+            cooldowns={},
+            vote_counter=0
         )
 
         self.vote_check_task = self.bot.loop.create_task(self.check_votes())
 
     async def cog_load(self):
         """Called when the cog is loaded - register persistent views"""
-        # Wait for bot to be ready before registering views
         await self.bot.wait_until_ready()
         async with self.config.active_votes() as votes:
             for vote_id in votes.keys():
@@ -67,7 +70,6 @@ class Voteban(commands.Cog):
     @commands.Cog.listener()
     async def on_ready(self):
         """Register persistent views when bot is ready"""
-        # Re-register all active vote views on bot restart
         await self.bot.wait_until_ready()
         async with self.config.active_votes() as votes:
             for vote_id in votes.keys():
@@ -83,7 +85,7 @@ class Voteban(commands.Cog):
         while not self.bot.is_closed():
             try:
                 await self.process_completed_votes()
-                await asyncio.sleep(300)  # Check every 5 minutes
+                await asyncio.sleep(300)
             except Exception as e:
                 print(f"Error in vote check task: {e}")
                 await asyncio.sleep(60)
@@ -104,13 +106,8 @@ class Voteban(commands.Cog):
 
     async def calculate_quorum(self, guild):
         """Calculate quorum requirement (1/3 of server members)"""
-        # Get total member count
         total_members = guild.member_count
-
-        # Calculate quorum (at least 1/3 of members)
         quorum = math.ceil(total_members / 3)
-
-        # Ensure minimum quorum of at least 3 members (to avoid edge cases)
         return max(quorum, 3)
 
     async def finalize_vote(self, vote_id, vote_data):
@@ -128,26 +125,20 @@ class Voteban(commands.Cog):
         total_votes = len(votes)
 
         if total_votes == 0:
-            return  # No votes, nothing to do
+            return
 
-        # Calculate quorum
         quorum = await self.calculate_quorum(guild)
 
-        # Check if quorum was met
         if total_votes < quorum:
-            # Quorum not met - vote fails, nothing happens
             await self.handle_quorum_failure(vote_id, vote_data, guild, total_votes, quorum)
             return
 
-        # Quorum met - proceed with vote result
         ban_percentage = (ban_votes / total_votes) * 100
 
         async with self.config.immunities() as immunities:
             if ban_percentage > 50:
-                # Ban the user
                 try:
                     await guild.ban(target, reason=f"Ban vote passed: {ban_votes}/{total_votes} votes")
-                    # Remove immunity if they had any
                     if str(target.id) in immunities:
                         del immunities[str(target.id)]
                     result = "banned"
@@ -156,27 +147,22 @@ class Voteban(commands.Cog):
                     result = "failed (bot lacks permission)"
                     color = 0xFF0000
             else:
-                # Grant immunity for 6 months (includes 50% ties)
                 immunity_end = (datetime.now() + timedelta(days=180)).isoformat()
                 immunities[str(target.id)] = immunity_end
                 result = "kept (6-month immunity granted)"
                 color = 0x00FF00
 
-        # Update the original message to show results
         await self.update_vote_completion_message(vote_id, vote_data, guild, target, ban_votes, total_votes, result, color)
 
     async def handle_quorum_failure(self, vote_id, vote_data, guild, total_votes, quorum):
         """Handle case where quorum was not met"""
-        # Remove the starter's cooldown since vote didn't count
         async with self.config.cooldowns() as cooldowns:
             if str(vote_data['starter_id']) in cooldowns:
                 del cooldowns[str(vote_data['starter_id'])]
 
-        # Get target for message
         target = guild.get_member(vote_data['target_id'])
         target_name = target.display_name if target else "Unknown User"
 
-        # Update the original message to show quorum failure
         if 'message_id' in vote_data:
             try:
                 channel = guild.get_channel(vote_data['channel_id'])
@@ -203,8 +189,7 @@ class Voteban(commands.Cog):
             except Exception as e:
                 print(f"Error updating quorum failure message: {e}")
 
-    async def update_vote_completion_message(self, vote_id, vote_data, guild, target,
-                                            ban_votes, total_votes, result, color):
+    async def update_vote_completion_message(self, vote_id, vote_data, guild, target, ban_votes, total_votes, result, color):
         """Update the vote completion message"""
         if 'message_id' in vote_data:
             try:
@@ -240,26 +225,20 @@ class Voteban(commands.Cog):
                 return
 
             vote_data = votes[vote_id]
-
-            # Check if vote is still active
             start_time = datetime.fromisoformat(vote_data['start_time'])
             if datetime.now() - start_time >= timedelta(hours=24):
                 await interaction.response.send_message("This vote has already ended.", ephemeral=True)
                 return
 
-            # Cast the vote (anonymous)
             previous_vote = vote_data['votes'].get(str(interaction.user.id))
             vote_data['votes'][str(interaction.user.id)] = choice
 
-            # Create response based on whether they changed their vote
             if previous_vote:
                 response_text = f"Your vote has been changed from {previous_vote} to {choice}."
             else:
                 response_text = f"Your vote has been cast anonymously for {choice}."
 
             await interaction.response.send_message(response_text, ephemeral=True)
-
-            # Update the message embed with current vote count
             await self.update_vote_message(interaction, vote_id, vote_data)
 
     async def handle_status_button(self, interaction: discord.Interaction, vote_id: str):
@@ -277,7 +256,6 @@ class Voteban(commands.Cog):
             total_votes = len(vote_data['votes'])
             ban_votes = sum(1 for v in vote_data['votes'].values() if v == 'ban')
 
-            # Calculate quorum
             guild = interaction.guild
             quorum = await self.calculate_quorum(guild)
             remaining_for_quorum = max(0, quorum - total_votes)
@@ -292,7 +270,6 @@ class Voteban(commands.Cog):
             embed.add_field(name="Time Remaining", value=f"<t:{unix_end_time}:R>", inline=True)
             embed.add_field(name="Total Votes", value=str(total_votes), inline=True)
 
-            # Quorum information
             if total_votes >= quorum:
                 quorum_status = f"Met ({total_votes}/{quorum} required)"
             else:
@@ -318,7 +295,6 @@ class Voteban(commands.Cog):
             end_time = start_time + timedelta(hours=24)
             unix_end_time = int(end_time.timestamp())
 
-            # Calculate quorum
             guild = interaction.guild
             quorum = await self.calculate_quorum(guild)
 
@@ -331,7 +307,6 @@ class Voteban(commands.Cog):
             embed.add_field(name="Time Remaining", value=f"<t:{unix_end_time}:R>", inline=True)
             embed.add_field(name="Total Votes", value=str(total_votes), inline=True)
 
-            # Quorum information
             if total_votes >= quorum:
                 quorum_status = f"Met ({total_votes}/{quorum} required)"
             else:
@@ -355,34 +330,20 @@ class Voteban(commands.Cog):
             print(f"Error updating vote message: {e}")
 
     @app_commands.command(name='voteban', description='Start an anonymous vote to ban a user')
-    @app_commands.describe(target='The user to start a ban vote against', reason='The reason for the ban vote')
+    @app_commands.describe(
+        target='The user to start a ban vote against',
+        reason='The reason for the ban vote (optional)'
+    )
     @app_commands.guild_only()
-    @staticmethod
-    async def get_voteban_params_slash(interaction: discord.Interaction, target: discord.Member) -> dict:
-        """Get parameters for the voteban command"""
-        return {'interaction': interaction, 'target': target, 'reason': None}
-
-    @commands.hybrid_command(name='voteban', description='Start an anonymous vote to ban a user')
-    @commands.guild_only()
-    async def voteban_lexical(self, ctx: commands.Context, target: discord.Member, *, reason: str = "No reason provided"):
-        """Start an anonymous vote to ban a user using hybrid command"""
-        interaction = await ctx.channel.send("Use the slash command `/voteban` instead.")
-        await interaction.delete()
-        return
-
     async def voteban_slash(self, interaction: discord.Interaction, target: discord.Member, reason: str = "No reason provided"):
         """Start an anonymous vote to ban a user using slash command"""
 
-        # Check if target is server owner
         if target == interaction.guild.owner:
-            await interaction.response.defer(ephemeral=True)
-            await interaction.followup.send("You cannot start a ban vote against the server owner.", ephemeral=True)
+            await interaction.response.send_message("You cannot start a ban vote against the server owner.", ephemeral=True)
             return
 
-        # Defer the response since we need to do async operations
-        await interaction.response.defer(thinking=True, ephemeral=False)
+        await interaction.response.defer()
 
-        # Check if user is on cooldown
         async with self.config.cooldowns() as cooldowns:
             if str(interaction.user.id) in cooldowns:
                 cooldown_end = datetime.fromisoformat(cooldowns[str(interaction.user.id)])
@@ -393,7 +354,6 @@ class Voteban(commands.Cog):
                     await interaction.followup.send(f"You can start another ban vote in {days} days and {hours} hours.", ephemeral=True)
                     return
 
-        # Check if target has immunity
         async with self.config.immunities() as immunities:
             if str(target.id) in immunities:
                 immunity_end = datetime.fromisoformat(immunities[str(target.id)])
@@ -403,14 +363,12 @@ class Voteban(commands.Cog):
                     await interaction.followup.send(f"This user has immunity for another {days} days.", ephemeral=True)
                     return
 
-        # Check if there's already an active vote for this user in this server
         async with self.config.active_votes() as votes:
             for vote_data in votes.values():
                 if vote_data['guild_id'] == interaction.guild.id and vote_data['target_id'] == target.id:
                     await interaction.followup.send("There is already an active ban vote for this user.", ephemeral=True)
                     return
 
-            # Create new vote
             counter = await self.config.vote_counter()
             vote_id = str(counter)
             await self.config.vote_counter.set(counter + 1)
@@ -428,20 +386,16 @@ class Voteban(commands.Cog):
 
             votes[vote_id] = vote_data
 
-        # Set cooldown for the starter
         async with self.config.cooldowns() as cooldowns:
             cooldown_end = (datetime.now() + timedelta(days=180)).isoformat()
             cooldowns[str(interaction.user.id)] = cooldown_end
 
-        # Calculate vote end time for Discord timestamp
         start_time = datetime.now()
         end_time = start_time + timedelta(hours=24)
         unix_end_time = int(end_time.timestamp())
 
-        # Calculate quorum
         quorum = await self.calculate_quorum(interaction.guild)
 
-        # Create and send the embed with buttons
         embed = discord.Embed(
             title="Ban Vote Started",
             description=f"Vote to ban {target.mention} from the server",
@@ -458,25 +412,23 @@ class Voteban(commands.Cog):
         embed.set_footer(text=f"Vote ID: {vote_id}")
 
         view = VotebanView(vote_id, self)
-        message = await interaction.followup.send(embed=embed, view=view, ephemeral=False)
+        message = await interaction.followup.send(embed=embed, view=view)
 
-        # Register the view for persistence
         self.bot.add_view(view)
 
-        # Store the message ID for updating
         async with self.config.active_votes() as votes:
             votes[vote_id]['message_id'] = message.id
 
     @app_commands.command(name='votestatus', description='Check the status of a ban vote')
-    @app_commands.describe(vote_id='The vote ID to check')
+    @app_commands.describe(vote_id='The vote ID to check (leave empty to see all active votes)')
     @app_commands.guild_only()
     async def votestatus_slash(self, interaction: discord.Interaction, vote_id: str = None):
         await interaction.response.defer(ephemeral=True)
 
-        if not vote_id:
-            # Show all active votes for the server
-            async with self.config.active_votes() as votes:
-                server_votes = [(vid, vdata) for vid, vdata in votes.items() if vdata['guild_id'] == interaction.guild.id]
+        async with self.config.active_votes() as votes:
+            server_votes = [(vid, vdata) for vid, vdata in votes.items() if vdata['guild_id'] == interaction.guild.id]
+
+            if not vote_id:
                 if not server_votes:
                     await interaction.followup.send("No active ban votes in this server.", ephemeral=True)
                     return
@@ -491,13 +443,11 @@ class Voteban(commands.Cog):
                     target = interaction.guild.get_member(vdata['target_id'])
                     target_name = target.display_name if target else "Unknown User"
 
-                    embed.add_field(name=f"Vote ID: {vid} - {target_name}", 
-                                   value=f"<t:{unix_end_time}:R> | {ban_votes}🔨 / {total_votes} total", inline=False)
+                    embed.add_field(name=f"Vote ID: {vid} - {target_name}", value=f"<t:{unix_end_time}:R> | {ban_votes}🔨 / {total_votes} total", inline=False)
 
                 await interaction.followup.send(embed=embed, ephemeral=True)
-            return
+                return
 
-        async with self.config.active_votes() as votes:
             if vote_id not in votes:
                 await interaction.followup.send("Invalid vote ID.", ephemeral=True)
                 return
@@ -514,7 +464,6 @@ class Voteban(commands.Cog):
             ban_votes = sum(1 for v in vote_data['votes'].values() if v == 'ban')
             quorum = await self.calculate_quorum(interaction.guild)
 
-            # Re-styled embed to match your image
             embed = discord.Embed(title="📊 Vote Status", color=0x00BFFF)
             embed.description = f"Status for vote {vote_id}"
             embed.add_field(name="Target", value=f"<@{vote_data['target_id']}>", inline=False)
@@ -541,15 +490,12 @@ class Voteban(commands.Cog):
     @checks.admin_or_permissions(administrator=True)
     async def votebanclear_slash(self, interaction: discord.Interaction, vote_id: str = None):
         """Clear an active ban vote or all votes (Admin only) using slash command"""
-        await interaction.response.defer(ephemeral=True)
-
         async with self.config.active_votes() as votes:
             if vote_id:
                 if vote_id in votes:
-                    # Disable the buttons on the original message
                     vote_data = votes[vote_id]
                     if vote_data['guild_id'] != interaction.guild.id:
-                        await interaction.followup.send("You can only clear votes in your server.", ephemeral=True)
+                        await interaction.response.send_message("You can only clear votes in your server.", ephemeral=True)
                         return
 
                     try:
@@ -564,16 +510,14 @@ class Voteban(commands.Cog):
                         print(f"Error disabling vote buttons: {e}")
 
                     del votes[vote_id]
-                    await interaction.followup.send(f"Vote {vote_id} has been cleared.", ephemeral=True)
+                    await interaction.response.send_message(f"Vote {vote_id} has been cleared.", ephemeral=True)
                 else:
-                    await interaction.followup.send("Invalid vote ID.", ephemeral=True)
+                    await interaction.response.send_message("Invalid vote ID.", ephemeral=True)
             else:
-                # Clear all votes for this server
                 to_remove = []
                 for vid, vdata in votes.items():
                     if vdata['guild_id'] == interaction.guild.id:
                         to_remove.append(vid)
-                        # Disable the buttons on the original messages
                         try:
                             channel = interaction.guild.get_channel(vdata['channel_id'])
                             if channel and 'message_id' in vdata:
@@ -588,7 +532,7 @@ class Voteban(commands.Cog):
                 for vid in to_remove:
                     del votes[vid]
 
-                await interaction.followup.send(f"Cleared {len(to_remove)} active votes.", ephemeral=True)
+                await interaction.response.send_message(f"Cleared {len(to_remove)} active votes.", ephemeral=True)
 
     @app_commands.command(name='votebanimmune', description='Manually grant immunity to a user for 6 months (Admin only)')
     @app_commands.describe(target='The user to grant immunity to')
