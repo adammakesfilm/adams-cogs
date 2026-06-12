@@ -15,17 +15,27 @@ class VotebanView(View):
         self.vote_id = vote_id
         self.cog = cog
 
-    @button(label='Vote to Ban', style=discord.ButtonStyle.danger, emoji='🔨', custom_id=f'voteban_ban_{vote_id}')
+        # Set custom IDs dynamically in __init__
+        for child in self.children:
+            if isinstance(child, discord.ui.Button):
+                if child.label == 'Vote to Ban':
+                    child.custom_id = f'voteban_ban_{vote_id}'
+                elif child.label == 'Vote to Keep':
+                    child.custom_id = f'voteban_keep_{vote_id}'
+                elif child.label == 'Check Status':
+                    child.custom_id = f'voteban_status_{vote_id}'
+
+    @button(label='Vote to Ban', style=discord.ButtonStyle.danger, emoji='🔨')
     async def ban_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Handle ban vote button"""
         await self.cog.handle_vote_button(interaction, self.vote_id, 'ban')
 
-    @button(label='Vote to Keep', style=discord.ButtonStyle.success, emoji='🛡️', custom_id=f'voteban_keep_{vote_id}')
+    @button(label='Vote to Keep', style=discord.ButtonStyle.success, emoji='🛡️')
     async def keep_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Handle keep vote button"""
         await self.cog.handle_vote_button(interaction, self.vote_id, 'keep')
 
-    @button(label='Check Status', style=discord.ButtonStyle.secondary, emoji='📊', custom_id=f'voteban_status_{vote_id}')
+    @button(label='Check Status', style=discord.ButtonStyle.secondary, emoji='📊')
     async def status_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Handle status check button"""
         await self.cog.handle_status_button(interaction, self.vote_id)
@@ -167,8 +177,7 @@ class Voteban(commands.Cog):
                 color = 0x00FF00
 
         # Update the original message to show results
-        await self.update_vote_completion_message(vote_id, vote_data, guild, target, 
-                                                  ban_votes, total_votes, result, color)
+        await self.update_vote_completion_message(vote_id, vote_data, guild, target, ban_votes, total_votes, result, color)
 
     async def handle_quorum_failure(self, vote_id, vote_data, guild, total_votes, quorum):
         """Handle case where quorum was not met"""
@@ -611,3 +620,4 @@ class Voteban(commands.Cog):
             )
 
             await interaction.response.send_message(embed=embed)
+            
