@@ -1,6 +1,7 @@
 import re
 import urllib.parse
 import discord
+import asyncio
 from redbot.core import commands
 
 class LinkSanitizer(commands.Cog):
@@ -52,11 +53,9 @@ class LinkSanitizer(commands.Cog):
                 parsed = urllib.parse.urlparse(url)
                 netloc = parsed.netloc.lower()
                 
-                # Check if the domain is in our replacement map
                 if netloc in domain_map:
                     parsed = parsed._replace(netloc=domain_map[netloc])
                     
-                # Handle YouTube ?si= tracking parameter removal separately
                 elif netloc in ["youtube.com", "www.youtube.com", "youtu.be"]:
                     query_params = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
                     if "si" in query_params:
@@ -74,12 +73,16 @@ class LinkSanitizer(commands.Cog):
                 continue
                 
         if sanitized and new_links:
+            # Send the cleaned links as a reply FIRST so the user isn't waiting
+            reply_content = "🔗 **Fixed Links:**\n" + "\n".join(new_links)
+            await message.reply(reply_content, mention_author=False)
+
+            # Check if bot has permission to manage messages
             permissions = message.channel.permissions_for(message.guild.me)
             if permissions.manage_messages:
+                # Wait 2 seconds to let Discord naturally generate the YouTube embed
+                await asyncio.sleep(2)
                 try:
                     await message.edit(suppress=True)
                 except discord.HTTPException:
                     pass
-            
-            reply_content = "🔗 **Fixed Links:**\n" + "\n".join(new_links)
-            await message.reply(reply_content, mention_author=False)
