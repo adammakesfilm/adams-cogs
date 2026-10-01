@@ -30,7 +30,7 @@ The user who cast a vote has a 6 month cooldown from being able to start another
 This cog is an FAQ cog specifically written for use in my Discord server, it's not really applicable to any other server. You're welcome to take it and rewrite it for your use however. 
 
 ### Link Sanitizer
-![Static Badge](https://img.shields.io/badge/Cog_Status:-In_Development-orange?style=flat) 
+![Static Badge](https://img.shields.io/badge/Cog_Status:-Ready_To_Use-brightgreen?style=flat)
 
 `[p]cog install linksanitizer`
 
