@@ -23,7 +23,12 @@ The user who cast a vote has a 6 month cooldown from being able to start another
 
 This cog is an FAQ cog specifically written for use in my Discord server, it's not really applicable to any other server. You're welcome to take it and rewrite it for your use however. 
 
+### Link Sanitizer
+![Static Badge](https://img.shields.io/badge/Cog_Status:-In_Development-orange?style=flat)
+
+Automatically sanitizes links before posting them in the server. This removes any link tracking and makes the links embed in Discord natively allowing users to view the content from within Discord.
+
 ---
 ### Licence
-These cogs were developed with assistance from [GLM-4.7](https://z.ai/blog/glm-4.7). The code is released under the MIT License.
+These cogs were developed with assistance from LLMs, all code is still vetted and maintained by humans. The code is released under the MIT License.
 

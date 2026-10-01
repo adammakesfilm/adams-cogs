@@ -1,0 +1,27 @@
+{
+  "name": "Link Sanitizer",
+  "short": "Sanitizes links before posting them in the server",
+  "description": "Automatically sanitizes links before posting them in the server. This removes any link tracking and makes the links embed in Discord natively allowing users to view the content from within Discord.",
+  "end_user_data_statement": "This cog does not store any user data.",
+  "author": [
+    "YourName"
+  ],
+  "required_cogs": {},
+  "requirements": [],
+  "tags": [
+    "link",
+    "sanitization",
+    "moderation"
+  ],
+  "min_bot_version": "3.5.0",
+  "max_bot_version": "3.5.99",
+  "min_python_version": [
+    3,
+    8,
+    0
+  ],
+  "hidden": false,
+  "disabled": false,
+  "install_msg": "Thank you for installing the Link Sanitizer cog! This cog will automatically sanitize links before posting them in the server, removing any tracking and allowing for native Discord embeds.",
+  "required_settings": []
+}
