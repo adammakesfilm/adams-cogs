@@ -7,5 +7,5 @@ YouTube -> Native -> Remove @si/?si
 Twitch -> Native
 Reddit -> vxreddit.com
 TikTok -> tfxtiktok.com
-Pixiv -> pixiv.net
+Pixiv -> phixiv.net
 DeviantArt -> fxdeviantart
