@@ -2,6 +2,7 @@ Random fun and utility cogs for [Red-DiscordBot](https://github.com/cog-creators
 
 ### WritingPrompt 
 ![Static Badge](https://img.shields.io/badge/Cog_Status:-Ready_To_Use-brightgreen?style=flat) 
+
 `[p]cog install writingprompt`
 
 Automatically pulls the top daily post from [r/WritingPrompts](https://www.reddit.com/r/WritingPrompts/) and posts it in a channel of your choosing. 
@@ -12,6 +13,7 @@ You can take it further and react to your own prompt response with ❓ and your 
 
 ### VoteBan
 ![Static Badge](https://img.shields.io/badge/Cog_Status:-Ready_To_Use-brightgreen?style=flat) 
+
 `[p]cog install voteban`
 
 Allow users to democratically vote to ban a user from your Discord server. A user can start a ban vote, and a reason and then it will be live for 24 hours: 
@@ -22,12 +24,14 @@ The user who cast a vote has a 6 month cooldown from being able to start another
 
 ### FAQ
 ![Static Badge](https://img.shields.io/badge/Cog_Status:-Not_Made_For_Public_Use-red?style=flat) 
+
 `[p]cog install faq`
 
 This cog is an FAQ cog specifically written for use in my Discord server, it's not really applicable to any other server. You're welcome to take it and rewrite it for your use however. 
 
 ### Link Sanitizer
 ![Static Badge](https://img.shields.io/badge/Cog_Status:-In_Development-orange?style=flat) 
+
 `[p]cog install linksanitizer`
 
 Automatically sanitizes links before posting them in the server. This removes any link tracking and makes the links embed in Discord natively allowing users to view the content from within Discord.
