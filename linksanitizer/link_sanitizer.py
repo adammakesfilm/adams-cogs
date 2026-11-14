@@ -1,38 +1,16 @@
 import re
-import logging
 import urllib.parse
 import discord
 import asyncio
 from redbot.core import commands
 
-log = logging.getLogger("red.linksanitizer")
+# Only these YouTube query params are kept. Everything else is dropped,
+# so new tracking params (si, is, or whatever comes next) are removed automatically.
+YOUTUBE_KEEP_PARAMS = {"v", "t", "list", "index", "start", "end"}
 
 YOUTUBE_HOSTS = {
     "youtube.com", "www.youtube.com", "m.youtube.com",
     "music.youtube.com", "youtu.be",
-}
-
-DOMAIN_MAP = {
-    "twitter.com": "fxtwitter.com",
-    "www.twitter.com": "fxtwitter.com",
-    "x.com": "fxtwitter.com",
-    "www.x.com": "fxtwitter.com",
-    "instagram.com": "kkinstagram.com",
-    "www.instagram.com": "kkinstagram.com",
-    "facebook.com": "facebed.com",
-    "www.facebook.com": "facebed.com",
-    "tumblr.com": "fxtumblr.com",
-    "www.tumblr.com": "fxtumblr.com",
-    "reddit.com": "vxreddit.com",
-    "www.reddit.com": "vxreddit.com",
-    "deviantart.com": "fxdeviantart.com",
-    "www.deviantart.com": "fxdeviantart.com",
-    "pixiv.net": "phixiv.net",
-    "www.pixiv.net": "phixiv.net",
-    "tiktok.com": "tfxktok.com",
-    "www.tiktok.com": "tfxktok.com",
-    "vm.tiktok.com": "tfxktok.com",
-    "vt.tiktok.com": "tfxktok.com",
 }
 
 class LinkSanitizer(commands.Cog):
@@ -46,44 +24,75 @@ class LinkSanitizer(commands.Cog):
         if message.author.bot or not message.guild:
             return
 
-        urls = re.findall(r'(https?://[^\s<>]+)', message.content)
+        content = message.content
+        sanitized = False
+        new_links = []
+
+        url_regex = r'(https?://[^\s]+)'
+        urls = re.findall(url_regex, content)
+
         if not urls:
             return
 
-        new_links = []
+        domain_map = {
+            "twitter.com": "fxtwitter.com",
+            "www.twitter.com": "fxtwitter.com",
+            "x.com": "fxtwitter.com",
+            "www.x.com": "fxtwitter.com",
+            "instagram.com": "kkinstagram.com",
+            "www.instagram.com": "kkinstagram.com",
+            "facebook.com": "facebed.com",
+            "www.facebook.com": "facebed.com",
+            "tumblr.com": "fxtumblr.com",
+            "www.tumblr.com": "fxtumblr.com",
+            "reddit.com": "vxreddit.com",
+            "www.reddit.com": "vxreddit.com",
+            "deviantart.com": "fxdeviantart.com",
+            "www.deviantart.com": "fxdeviantart.com",
+            "pixiv.net": "phixiv.net",
+            "www.pixiv.net": "phixiv.net",
+            "tiktok.com": "tfxktok.com",
+            "www.tiktok.com": "tfxktok.com",
+            "vm.tiktok.com": "tfxktok.com",
+            "vt.tiktok.com": "tfxktok.com"
+        }
+
         for url in urls:
             try:
                 parsed = urllib.parse.urlparse(url)
                 netloc = parsed.netloc.lower()
 
-                if netloc in DOMAIN_MAP:
-                    parsed = parsed._replace(netloc=DOMAIN_MAP[netloc])
+                if netloc in domain_map:
+                    parsed = parsed._replace(netloc=domain_map[netloc])
 
                 elif netloc in YOUTUBE_HOSTS:
                     pairs = [
                         (k, v) for k, v in urllib.parse.parse_qsl(
                             parsed.query, keep_blank_values=True)
-                        if k != "si"
+                        if k in YOUTUBE_KEEP_PARAMS
                     ]
                     parsed = parsed._replace(query=urllib.parse.urlencode(pairs))
 
                 new_url = urllib.parse.urlunparse(parsed)
+
                 if new_url != url:
                     new_links.append(new_url)
+                    sanitized = True
 
             except Exception:
-                log.exception("Failed to sanitize URL: %s", url)
+                continue
 
-        if not new_links:
-            return
+        if sanitized and new_links:
+            # Send the cleaned links as a reply FIRST so the user isn't waiting
+            reply_content = "🔗 **Fixed Links:**\n" + "\n".join(new_links)
+            await message.reply(reply_content, mention_author=False)
 
-        await message.reply("🔗 **Fixed Links:**\n" + "\n".join(new_links),
-                            mention_author=False)
-
-        permissions = message.channel.permissions_for(message.guild.me)
-        if permissions.manage_messages:
-            await asyncio.sleep(2)
-            try:
-                await message.edit(suppress=True)
-            except discord.HTTPException:
-                log.warning("Could not suppress embeds on message %s", message.id)
+            # Check if bot has permission to manage messages
+            permissions = message.channel.permissions_for(message.guild.me)
+            if permissions.manage_messages:
+                # Wait 2 seconds to let Discord naturally generate the embed
+                await asyncio.sleep(2)
+                try:
+                    await message.edit(suppress=True)
+                except discord.HTTPException:
+                    pass
